@@ -1,4 +1,4 @@
-import feedparser
+import requests
 from datetime import datetime
 from pathlib import Path
 import html
@@ -7,10 +7,18 @@ SUBREDDITS = [
     "programming",
     "MachineLearning",
     "python",
+    "obsidian",
+    "notion",
+    "superProductivity",
 ]
 
 POST_LIMIT = 20
+MIN_KARMA = 100
 OUTPUT_DIR = Path("output")
+
+HEADERS = {
+    "User-Agent": "weekly-reddit-fetcher/1.0"
+}
 
 def current_week_tag():
     now = datetime.now()
@@ -18,15 +26,28 @@ def current_week_tag():
     return f"{year}-W{week:02d}"
 
 def fetch_subreddit(subreddit):
-    url = f"https://www.reddit.com/r/{subreddit}/top/.rss?t=week"
-    feed = feedparser.parse(url)
+    url = f"https://www.reddit.com/r/{subreddit}/top.json"
+    params = {
+        "t": "week",
+        "limit": 100
+    }
+
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
 
     posts = []
-    for entry in feed.entries[:POST_LIMIT]:
-        posts.append({
-            "title": html.escape(str(entry.title)),
-            "link": entry.link
-        })
+    for child in data["data"]["children"]:
+        post = child["data"]
+        if post["score"] > MIN_KARMA:
+            posts.append({
+                "title": html.escape(post["title"]),
+                "link": f"https://www.reddit.com{post['permalink']}",
+                "score": post["score"],
+            })
+        if len(posts) >= POST_LIMIT:
+            break
+
     return posts
 
 def generate_html(subreddit, posts, week_tag):
@@ -41,7 +62,10 @@ def generate_html(subreddit, posts, week_tag):
 
     for p in posts:
         lines.append(
-            f"<li><a href='{p['link']}' target='_blank'>{p['title']}</a></li>"
+            f"<li>"
+            f"<a href='{p['link']}' target='_blank'>{p['title']}</a>"
+            f" ({p['score']})"
+            f"</li>"
         )
 
     lines.append("</ul>")
