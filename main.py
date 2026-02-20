@@ -3,9 +3,15 @@ from datetime import datetime
 from pathlib import Path
 import html
 
-SUBREDDITS = [
-    "programming",
+WEEKLY_SUBREDDITS = [
     "MachineLearning",
+    "productivity",
+    "getdisciplined",
+    "selfimprovement",
+]
+
+MONTHLY_SUBREDDITS = [
+    "anki",
     "python",
     "obsidian",
     "notion",
@@ -76,7 +82,7 @@ def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     week_tag = current_week_tag()
 
-    for sub in SUBREDDITS:
+    for sub in WEEKLY_SUBREDDITS:
         posts = fetch_subreddit(sub)
         html_content = generate_html(sub, posts, week_tag)
 
