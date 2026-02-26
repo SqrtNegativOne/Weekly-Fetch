@@ -2,3 +2,6 @@ MachineLearning
 productivity
 getdisciplined
 selfimprovement
+
+askphilosophy
+philosophy
