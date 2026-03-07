@@ -1,9 +1,9 @@
 from tqdm import tqdm
 
-from src.config import MONTHLY_SUBREDDITS, OUTPUT_DIR, POST_LIMIT, WEEKLY_SUBREDDITS
-from src.fetch import fetch_subreddit
-from src.render import generate_html
-from src.schedule import current_week_tag, should_fetch_monthly, update_monthly_timestamp
+from config import MONTHLY_SUBREDDITS, OUTPUT_DIR, POST_LIMIT, WEEKLY_SUBREDDITS
+from fetch import fetch_subreddit
+from render import generate_html
+from schedule import current_week_tag, should_fetch_monthly, update_monthly_timestamp
 
 
 def main():

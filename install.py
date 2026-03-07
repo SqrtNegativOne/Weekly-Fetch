@@ -4,13 +4,12 @@ from pathlib import Path
 
 TASK_NAME = "WeeklyRedditDigest"
 RUN_DAY = "SAT"
-RUN_TIME = "09:00"
+RUN_TIME = "07:00"
 
 
 def main():
     python_exe = sys.executable
     script_path = Path(__file__).parent / "main.py"
-    # start_dir = script_path.parent
 
     task_cmd = f'"{python_exe}" "{script_path}"'
 

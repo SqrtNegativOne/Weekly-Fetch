@@ -12,6 +12,6 @@ def load_list(path):
     return [l.strip() for l in Path(path).read_text().splitlines() if l.strip()]
 
 
-# Loaded at import time; paths are relative to the working directory (project root)
+# Loaded at import time
 WEEKLY_SUBREDDITS  = load_list("weekly.txt")
 MONTHLY_SUBREDDITS = load_list("monthly.txt")
