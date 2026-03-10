@@ -1,5 +1,0 @@
-anki
-python
-obsidian
-notion
-superProductivity
