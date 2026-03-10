@@ -3,7 +3,7 @@ import time
 
 import requests
 
-from .config import HEADERS, MIN_KARMA, POST_LIMIT
+from config import HEADERS, MIN_KARMA, POST_LIMIT
 
 
 def parse_comment(child: dict, depth_remaining: int) -> dict | None:
@@ -64,7 +64,7 @@ def fetch_comments(subreddit: str, post_id: str) -> list[dict]:
     return comments
 
 
-def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None) -> list[dict]:
+def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None, min_karma: int = MIN_KARMA) -> list[dict]:
     if progress is not None:
         progress.set_description(f"r/{subreddit}: fetching top posts")
 
@@ -81,7 +81,7 @@ def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None) ->
     posts = []
     for child in data["data"]["children"]:
         post = child["data"]
-        if post.get("score", 0) < MIN_KARMA:
+        if post.get("score", 0) < min_karma:
             continue
 
         # title is HTML-escaped so it's safe to inject into innerHTML via JS
@@ -150,6 +150,8 @@ def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None) ->
             "type":     content_type,
             "content":  content,
             "comments": comments,
+            "platform": "reddit",
+            "author":   "",
         })
 
         if len(posts) >= POST_LIMIT:

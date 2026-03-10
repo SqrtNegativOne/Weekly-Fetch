@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weekly Fetch</title>
+  <link rel="stylesheet" href="/static/digest.css">
+</head>
+<body>
+
+<!-- Toast notifications -->
+<div id="toast-container" role="status" aria-live="polite"></div>
+
+<!-- ── Left app nav sidebar ──────────────────────────────────────── -->
+<div id="app-nav">
+  <div id="app-brand">
+    <span class="brand-icon">&#x2299;</span>
+    <span class="brand-text">Weekly Fetch</span>
+  </div>
+  <div id="nav-section-label">Reports</div>
+  <div id="report-list">
+    <div id="report-list-empty">No reports yet.<br>Go to Settings &rarr; Run Now.</div>
+  </div>
+  <div id="nav-bottom">
+    <button class="nav-btn" data-view="accounts">Accounts</button>
+    <button class="nav-btn" data-view="settings">Settings</button>
+  </div>
+</div>
+
+<!-- ── Main content area ─────────────────────────────────────────── -->
+<div id="app-main">
+
+  <!-- Home placeholder -->
+  <div id="view-home" class="app-view active">
+    <div class="home-content">
+      <div class="home-icon">&#x2299;</div>
+      <div class="home-title">Weekly Fetch</div>
+      <div class="home-subtitle">Select a report from the sidebar,<br>or go to Settings to run a fetch.</div>
+    </div>
+  </div>
+
+  <!-- Accounts view -->
+  <div id="view-accounts" class="app-view">
+    <div class="app-view-content">
+      <div class="app-view-header">Accounts</div>
+
+      <div class="form-section" data-platform="reddit">
+        <div class="form-section-title">Reddit</div>
+        <div class="form-group">
+          <label>Min karma <span class="label-hint">minimum post score to include</span></label>
+          <input type="number" id="reddit-min-karma" value="100" min="0">
+        </div>
+        <div class="form-group">
+          <label>Subreddits <span class="label-hint">one per line &mdash; plain name or JSON with schedule</span></label>
+          <textarea id="reddit-subreddits" rows="6" placeholder="MachineLearning&#10;productivity&#10;getdisciplined"></textarea>
+        </div>
+      </div>
+
+      <div class="form-section" data-platform="bluesky">
+        <div class="form-section-title">Bluesky</div>
+        <div class="form-group">
+          <label>Min likes</label>
+          <input type="number" id="bluesky-min-likes" value="10" min="0">
+        </div>
+        <div class="form-group">
+          <label>Accounts <span class="label-hint">one handle per line, e.g. jay.bsky.social</span></label>
+          <textarea id="bluesky-accounts" rows="4" placeholder="jay.bsky.social"></textarea>
+        </div>
+      </div>
+
+      <div class="form-section" data-platform="tumblr">
+        <div class="form-section-title">Tumblr</div>
+        <div class="form-group">
+          <label>Min notes</label>
+          <input type="number" id="tumblr-min-notes" value="5" min="0">
+        </div>
+        <div class="form-group">
+          <label>Blogs <span class="label-hint">one name per line, e.g. staff</span></label>
+          <textarea id="tumblr-blogs" rows="4" placeholder="staff"></textarea>
+        </div>
+      </div>
+
+      <div class="form-section" data-platform="instagram">
+        <div class="form-section-title">Instagram</div>
+        <div class="form-group">
+          <label>Min likes</label>
+          <input type="number" id="instagram-min-likes" value="100" min="0">
+        </div>
+        <div class="form-group">
+          <label>Accounts <span class="label-hint">one username per line, e.g. natgeo</span></label>
+          <textarea id="instagram-accounts" rows="4" placeholder="natgeo"></textarea>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-accounts">Save Accounts</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings view -->
+  <div id="view-settings" class="app-view">
+    <div class="app-view-content">
+      <div class="app-view-header">Settings</div>
+
+      <div class="form-section">
+        <div class="form-section-title">Directories</div>
+        <div class="form-group">
+          <label>Output directory <span class="label-hint">where HTML digest files are written</span></label>
+          <input type="text" id="setting-output-dir" placeholder="output">
+        </div>
+        <div class="form-group">
+          <label>Data directory <span class="label-hint">where the SQLite database is stored</span></label>
+          <input type="text" id="setting-data-dir" placeholder="data">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Scheduled Task</div>
+        <div class="form-group">
+          <label>Day of week</label>
+          <select id="setting-schedule-day">
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option>
+            <option selected>Saturday</option><option>Sunday</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Time (24h)</label>
+          <input type="time" id="setting-schedule-time" value="09:00">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+        <button class="btn btn-secondary" id="btn-install-task">Install Task</button>
+        <button class="btn btn-danger" id="btn-remove-task">Remove Task</button>
+        <button class="btn btn-accent" id="btn-run-now">Run Now</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app-main -->
+
+<!-- ── Full-screen digest viewer overlay ─────────────────────────── -->
+<div id="viewer-overlay">
+  <div id="bg">
+    <div id="blob1" class="blob"></div>
+    <div id="blob2" class="blob"></div>
+    <div id="blob3" class="blob"></div>
+  </div>
+
+  <div id="viewer-app">
+    <div id="topbar">
+      <button id="viewer-back">&larr; Back</button>
+      <div id="tabs"></div>
+      <div id="topbar-progress"></div>
+    </div>
+
+    <div id="layout">
+      <div id="card-area">
+        <div id="card-scroll">
+          <div id="card"></div>
+          <div id="card-comments"></div>
+        </div>
+        <div id="nav-bar">
+          <button id="btn-prev" onclick="navigate(-1)">&larr; Prev</button>
+          <span id="nav-label"></span>
+          <button id="btn-next" onclick="navigate(1)">Next &rarr;</button>
+        </div>
+      </div>
+
+      <div id="sidebar">
+        <div id="sidebar-header">Notes</div>
+        <div id="notes-post-title"></div>
+        <textarea id="notes" placeholder="Click to start a bullet list&hellip;"></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
+  },
+  startup: { typeset: false }
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/digest.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

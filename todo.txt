@@ -1,4 +1,1 @@
-Comments are gone now for some reason, make them appear again.
-Make sidebar notes section bullet pointed.
-
-future: Add support for twitter, bsky, tumblr, instagram. Even substack?
+Add support for twitter, bsky, tumblr, instagram.

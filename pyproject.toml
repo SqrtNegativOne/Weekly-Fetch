@@ -6,6 +6,17 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "feedparser>=6.0.12",
+    "instaloader>=4.13",
     "requests>=2.32.5",
     "tqdm>=4.66",
+    # App dependencies
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pywebview>=5.0",
+    "winotify>=1.1",
+    "aiofiles>=23.2",
 ]
+
+[tool.ty.environment]
+# src/ modules import each other without the "src." prefix (sys.path is patched at runtime)
+extra-paths = ["src"]

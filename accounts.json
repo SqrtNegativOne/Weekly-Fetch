@@ -1,0 +1,25 @@
+{
+  "reddit": {
+    "min_karma": 100,
+    "subreddits": [
+      {"name": "MachineLearning",  "schedule": {"every_weekday": "Saturday"}},
+      {"name": "productivity",     "schedule": {"every_weekday": "Saturday"}},
+      {"name": "getdisciplined",   "schedule": {"every_weekday": "Saturday"}},
+      {"name": "selfimprovement",  "schedule": {"every_weekday": "Saturday"}},
+      {"name": "askphilosophy",    "schedule": {"every_weekday": "Saturday"}},
+      {"name": "philosophy",       "schedule": {"every_weekday": "Saturday"}}
+    ]
+  },
+  "bluesky": {
+    "min_likes": 10,
+    "accounts": []
+  },
+  "tumblr": {
+    "min_notes": 5,
+    "blogs": []
+  },
+  "instagram": {
+    "min_likes": 100,
+    "accounts": []
+  }
+}

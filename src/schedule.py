@@ -1,8 +1,19 @@
 import json
 from datetime import datetime
+from pathlib import Path
 
-from .config import LAST_MONTHLY_PATH
+from config import Source
 
+_ROOT_DIR       = Path(__file__).parent.parent
+LAST_FETCH_PATH = _ROOT_DIR / "last_fetch.json"
+
+WEEKDAY_MAP = {
+    "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+    "Friday": 4, "Saturday": 5, "Sunday": 6,
+}
+
+
+# ── Week tag ─────────────────────────────────────────────────────────────────
 
 def current_week_tag() -> str:
     now = datetime.now()
@@ -10,14 +21,118 @@ def current_week_tag() -> str:
     return f"{year}-W{week:02d}"
 
 
-def should_fetch_monthly() -> bool:
-    if not LAST_MONTHLY_PATH.exists():
-        return True
-    data = json.loads(LAST_MONTHLY_PATH.read_text())
-    now = datetime.now()
-    return (now.year, now.month) != (data["year"], data["month"])
+# ── State persistence ─────────────────────────────────────────────────────────
+# last_fetch.json maps "platform/name" → ISO datetime string of last fetch.
+# Example: {"reddit/MachineLearning": "2026-03-08T09:00:00"}
+
+def load_state() -> dict:
+    if not LAST_FETCH_PATH.exists():
+        return {}
+    return json.loads(LAST_FETCH_PATH.read_text(encoding="utf-8"))
 
 
-def update_monthly_timestamp() -> None:
-    now = datetime.now()
-    LAST_MONTHLY_PATH.write_text(json.dumps({"year": now.year, "month": now.month}))
+def save_state(state: dict) -> None:
+    LAST_FETCH_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _key(source: Source) -> str:
+    return f"{source.platform}/{source.name}"
+
+
+def mark_fetched(source: Source, state: dict, now: datetime) -> None:
+    """Record that this source was successfully fetched at `now`."""
+    state[_key(source)] = now.isoformat()
+
+
+# ── Due-check logic ───────────────────────────────────────────────────────────
+# Schedule dict must have exactly one of these keys:
+#
+#   every_n_days:    N        fetch every N days          (N=1 → daily)
+#   every_weekday:   "Name"   fetch on that weekday       ("Saturday", "Monday", …)
+#   every_n_weeks:   N        fetch every N weeks
+#   every_n_months:  N        fetch every N months        (N=1 → monthly)
+#   day_n_of_month:  N        fetch on day N each month   (N=1 → 1st of month)
+
+def is_due(source: Source, state: dict, now: datetime) -> bool:
+    """Return True if this source should be fetched in the current run."""
+    last_str = state.get(_key(source))
+    if last_str is None:
+        return True                         # never fetched → always due
+
+    last  = datetime.fromisoformat(last_str)
+    sched = source.schedule
+
+    if "every_n_days" in sched:
+        return (now - last).days >= sched["every_n_days"]
+
+    if "every_weekday" in sched:
+        target = WEEKDAY_MAP[sched["every_weekday"]]
+        # Due if today is the target weekday AND we haven't already run today
+        return now.weekday() == target and now.date() > last.date()
+
+    if "every_n_weeks" in sched:
+        return (now - last).days >= sched["every_n_weeks"] * 7
+
+    if "every_n_months" in sched:
+        months_elapsed = (now.year - last.year) * 12 + (now.month - last.month)
+        return months_elapsed >= sched["every_n_months"]
+
+    if "day_n_of_month" in sched:
+        return (now.day == sched["day_n_of_month"]
+                and (now.year, now.month) != (last.year, last.month))
+
+    return True   # unknown schedule type → always fetch
+
+
+# ── Reddit time_filter helper ─────────────────────────────────────────────────
+# Reddit's API accepts time=day|week|month|year|all. We pick the one that best
+# matches the source's fetch cadence so you get fresh top posts each run.
+
+def reddit_time_filter(schedule: dict) -> str:
+    if "every_n_days" in schedule:
+        n = schedule["every_n_days"]
+        if n <= 1:   return "day"
+        if n <= 7:   return "week"
+        if n <= 31:  return "month"
+        return "year"
+
+    if "every_weekday" in schedule:
+        return "week"
+
+    if "every_n_weeks" in schedule:
+        n = schedule["every_n_weeks"]
+        if n == 1:  return "week"
+        if n <= 4:  return "month"
+        return "year"
+
+    if "every_n_months" in schedule or "day_n_of_month" in schedule:
+        return "month"
+
+    return "week"   # safe default
+
+
+# ── Human-readable label ──────────────────────────────────────────────────────
+
+def schedule_label(schedule: dict) -> str:
+    """Return a short human-readable description of a schedule dict."""
+    if "every_n_days" in schedule:
+        n = schedule["every_n_days"]
+        return "Daily" if n == 1 else f"Every {n} days"
+
+    if "every_weekday" in schedule:
+        return f"Every {schedule['every_weekday']}"
+
+    if "every_n_weeks" in schedule:
+        n = schedule["every_n_weeks"]
+        return "Weekly" if n == 1 else f"Every {n} weeks"
+
+    if "every_n_months" in schedule:
+        n = schedule["every_n_months"]
+        return "Monthly" if n == 1 else f"Every {n} months"
+
+    if "day_n_of_month" in schedule:
+        n = schedule["day_n_of_month"]
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n if n < 20 else n % 10, "th")
+        return f"{n}{suffix} of month"
+
+    return "Custom"

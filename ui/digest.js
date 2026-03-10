@@ -1,18 +1,27 @@
-(function () {
-  const POSTS = JSON.parse(document.getElementById('posts-data').textContent);
+/**
+ * digest.js — flashcard viewer for the app.
+ *
+ * Difference from src/digest.js:
+ *   - Wrapped in window.initDigestViewer(posts, weekTag) instead of
+ *     reading from a <script type="application/json"> tag.
+ *   - Notes are pre-populated from post.note (data from the DB).
+ *   - Notes are saved to the API on blur in addition to localStorage.
+ *
+ * Called by app.js after a report is fetched from /api/reports/{tag}.
+ */
+window.initDigestViewer = function (POSTS, weekTag) {
   let current = 0;
 
-  // ── Subreddit colour palettes ───────────────────
-  // Each entry is [blob1, blob2, blob3] colours.
+  // ── Subreddit colour palettes ─────────────────────
   const PALETTES = [
-    ['#6366f1', '#8b5cf6', '#a78bfa'],  // indigo-violet
-    ['#06b6d4', '#0d9488', '#22d3ee'],  // cyan-teal
-    ['#f43f5e', '#e11d48', '#fb7185'],  // rose-crimson
-    ['#f59e0b', '#ef4444', '#f97316'],  // amber-orange
-    ['#10b981', '#059669', '#34d399'],  // emerald
-    ['#3b82f6', '#1d4ed8', '#60a5fa'],  // blue
-    ['#ec4899', '#a855f7', '#f0abfc'],  // pink-fuchsia
-    ['#0ea5e9', '#6366f1', '#38bdf8'],  // sky-indigo
+    ['#6366f1', '#8b5cf6', '#a78bfa'],
+    ['#06b6d4', '#0d9488', '#22d3ee'],
+    ['#f43f5e', '#e11d48', '#fb7185'],
+    ['#f59e0b', '#ef4444', '#f97316'],
+    ['#10b981', '#059669', '#34d399'],
+    ['#3b82f6', '#1d4ed8', '#60a5fa'],
+    ['#ec4899', '#a855f7', '#f0abfc'],
+    ['#0ea5e9', '#6366f1', '#38bdf8'],
   ];
   const COVER_PALETTE = ['#1e3a5f', '#0f2744', '#2563eb'];
   const NOTES_PALETTE = ['#92400e', '#b45309', '#d97706'];
@@ -28,7 +37,6 @@
     return PALETTES[subPaletteMap[post.subreddit]];
   }
 
-  // CSS transition on .blob handles the colour cross-fade automatically.
   const BLOB_IDS = ['blob1', 'blob2', 'blob3'];
   function updateBg(palette) {
     BLOB_IDS.forEach((id, i) => {
@@ -36,16 +44,14 @@
     });
   }
 
-  // ── Platform helpers ─────────────────────────────
-  // Given a platform string, return the human-readable tab/chip prefix.
+  // ── Platform helpers ──────────────────────────────
   function platformPrefix(platform) {
     if (platform === 'reddit')    return 'r/';
     if (platform === 'bluesky')   return '@';
     if (platform === 'instagram') return '@';
-    return '';   // Tumblr: no prefix
+    return '';
   }
 
-  // Short coloured badge rendered next to the score inside each post card.
   function platformBadge(platform) {
     if (!platform || platform === 'reddit') return '';
     const labels = { bluesky: 'bsky', tumblr: 'tumblr', instagram: 'ig' };
@@ -53,9 +59,18 @@
     return '<span class="platform-badge pb-' + platform + '">' + label + '</span>';
   }
 
-  // ── Build subreddit start-index map ─────────────
-  const subStarts      = {};  // sub → first post index
-  const subPlatformMap = {};  // sub → platform string
+  // ── Pre-populate localStorage from DB notes ───────
+  // This means the notes_summary card (which reads localStorage) shows
+  // notes from the DB even on the first open.
+  POSTS.forEach(p => {
+    if (p.note && p.link && !localStorage.getItem('note:' + p.link)) {
+      localStorage.setItem('note:' + p.link, p.note);
+    }
+  });
+
+  // ── Build subreddit start-index map ──────────────
+  const subStarts      = {};
+  const subPlatformMap = {};
   POSTS.forEach((p, i) => {
     if (p.type === 'cover' || p.type === 'notes_summary') return;
     if (!(p.subreddit in subStarts)) {
@@ -64,9 +79,10 @@
     }
   });
 
-  // ── Build tab bar ───────────────────────────────
+  // ── Build tab bar ─────────────────────────────────
   const tabDefs = [];
   const tabsEl  = document.getElementById('tabs');
+  tabsEl.innerHTML = '';  // clear any previous tabs
 
   function makeTab(label, extraClass) {
     const btn = document.createElement('button');
@@ -76,30 +92,27 @@
     return btn;
   }
 
-  // Digest tab (cover card, index 0)
   const coverBtn = makeTab('⊙ Digest', 'tab-special');
   coverBtn.onclick = () => navigateTo(0);
   tabDefs.push({ start: 0, end: 0, el: coverBtn });
 
-  // One tab per source — label uses platform-aware prefix
   const subList = Object.keys(subStarts);
   subList.forEach((sub, i) => {
     const start    = subStarts[sub];
     const end      = i + 1 < subList.length
       ? subStarts[subList[i + 1]] - 1
-      : POSTS.length - 2;   // -2: last entry is notes_summary
+      : POSTS.length - 2;
     const platform = subPlatformMap[sub] || 'reddit';
     const btn      = makeTab(platformPrefix(platform) + sub);
     btn.onclick    = () => navigateTo(start);
     tabDefs.push({ start, end, el: btn });
   });
 
-  // Notes tab (last card)
   const notesTabBtn = makeTab('✎ Notes', 'tab-special');
   notesTabBtn.onclick = () => navigateTo(POSTS.length - 1);
   tabDefs.push({ start: POSTS.length - 1, end: POSTS.length - 1, el: notesTabBtn });
 
-  // ── Bullet-point helpers for notes ──────────────
+  // ── Bullet-point helpers ──────────────────────────
   function bulletizeNote(text) {
     if (!text.trim()) return '';
     return text.split('\n').map(function (line) {
@@ -109,7 +122,7 @@
     }).filter(Boolean).join('\n');
   }
 
-  // ── Helpers ─────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────
   function escAttr(s) {
     return String(s)
       .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -124,11 +137,9 @@
     return n >= 2000 ? 'score-high' : n >= 500 ? 'score-mid' : 'score-low';
   }
 
-  // ── Special card renderers ───────────────────────
+  // ── Special card renderers ────────────────────────
 
   function renderCoverCard(p) {
-    // Group sources by platform. Each source carries a human-readable
-    // `period` label (e.g. "Every Saturday", "Monthly") set by schedule.py.
     const byPlatform = {};
     p.subreddits.forEach(s => {
       const pf = s.platform || 'reddit';
@@ -159,7 +170,6 @@
         '</div>';
     }
 
-    // Estimate reading time (~ 200 wpm across all post titles + text bodies)
     const words = POSTS
       .filter(q => q.type !== 'cover' && q.type !== 'notes_summary')
       .reduce((acc, q) => {
@@ -199,7 +209,6 @@
       return;
     }
 
-    // Group by source (subreddit / account handle), using platform-aware label
     const groups = {};
     noted.forEach(p => {
       const k = p.subreddit || '—';
@@ -216,9 +225,9 @@
       for (const p of posts) {
         const raw     = localStorage.getItem('note:' + p.link) || '';
         const bullets = raw.split('\n')
-          .map(function (l) { return l.replace(/^•\s*/, '').trim(); })
+          .map(l => l.replace(/^•\s*/, '').trim())
           .filter(Boolean)
-          .map(function (t) { return '<li>' + escAttr(t) + '</li>'; })
+          .map(t => '<li>' + escAttr(t) + '</li>')
           .join('');
         html +=
           '<div class="note-item">' +
@@ -233,7 +242,7 @@
     document.getElementById('card').innerHTML = html;
   }
 
-  // ── Comment thread renderer ──────────────────────
+  // ── Comment thread renderer ───────────────────────
   function renderComments(comments) {
     if (!comments || comments.length === 0) return '';
 
@@ -259,34 +268,31 @@
     return '<div class="comments-section">' + renderThread(comments) + '</div>';
   }
 
-  // ── Main render function ─────────────────────────
+  // ── Main render function ──────────────────────────
   const sidebarEl = document.getElementById('sidebar');
 
   function renderCard(index) {
     const p = POSTS[index];
     current = index;
 
-    // Tab highlights
     tabDefs.forEach(({ start, end, el }) => {
       el.classList.toggle('active', index >= start && index <= end);
     });
 
-    // Progress counter
     document.getElementById('topbar-progress').textContent =
       (index + 1) + ' / ' + POSTS.length;
+    document.getElementById('topbar').style.setProperty(
+      '--progress', ((index + 1) / POSTS.length * 100) + '%');
     document.getElementById('nav-label').textContent =
       (index + 1) + ' of ' + POSTS.length;
     document.getElementById('btn-prev').disabled = index === 0;
     document.getElementById('btn-next').disabled = index === POSTS.length - 1;
 
-    // Background
     updateBg(getPalette(p));
 
-    // Hide notes sidebar on cover + notes_summary cards — it doesn't make sense there
     const isSpecialCard = p.type === 'cover' || p.type === 'notes_summary';
     sidebarEl.style.display = isSpecialCard ? 'none' : '';
 
-    // Card content
     const commentsEl = document.getElementById('card-comments');
     if (p.type === 'cover') {
       renderCoverCard(p);
@@ -297,15 +303,14 @@
       commentsEl.style.display = 'none';
       commentsEl.innerHTML = '';
     } else {
-      // Normal post card
       let contentHtml = '';
-      if (p.type === 'text' && p.content.text) {
+      if (p.type === 'text' && p.content && p.content.text) {
         contentHtml = '<div class="selftext">' + marked.parse(p.content.text) + '</div>';
-      } else if ((p.type === 'image' || p.type === 'gallery') && p.content.url) {
+      } else if ((p.type === 'image' || p.type === 'gallery') && p.content && p.content.url) {
         contentHtml = '<img src="' + escAttr(p.content.url) + '" alt="" loading="lazy">';
-      } else if (p.type === 'video' && p.content.url) {
+      } else if (p.type === 'video' && p.content && p.content.url) {
         contentHtml = '<video src="' + escAttr(p.content.url) + '" controls muted preload="none"></video>';
-      } else if (p.type === 'link' && p.content.url) {
+      } else if (p.type === 'link' && p.content && p.content.url) {
         let domain = p.content.url;
         try { domain = new URL(p.content.url).hostname; } catch (e) {}
         contentHtml =
@@ -322,12 +327,10 @@
         '</div>' +
         contentHtml;
 
-      // MathJax (loads async — guard against it not being ready yet)
       if (p.type === 'text' && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
         MathJax.typesetPromise([document.getElementById('card')]).catch(console.error);
       }
 
-      // Comments in their own sibling card (collapsed by default)
       const commentsHtml = renderComments(p.comments);
       if (commentsHtml) {
         commentsEl.innerHTML =
@@ -343,7 +346,7 @@
         commentsEl.style.display = 'none';
       }
 
-      // Sidebar notes
+      // Populate notes sidebar — from localStorage (pre-seeded from DB note)
       const notesEl    = document.getElementById('notes');
       const notesTitEl = document.getElementById('notes-post-title');
       notesEl.value       = bulletizeNote(localStorage.getItem('note:' + p.link) || '');
@@ -353,13 +356,13 @@
     document.getElementById('card-scroll').scrollTop = 0;
   }
 
-  // ── Navigation ───────────────────────────────────
+  // ── Navigation ────────────────────────────────────
   function navigateTo(index) {
     if (index < 0 || index >= POSTS.length || index === current) return;
     const cardEl = document.getElementById('card');
     const cls    = index > current ? 'anim-fwd' : 'anim-bwd';
     cardEl.classList.remove('anim-fwd', 'anim-bwd');
-    void cardEl.offsetWidth;  // force reflow so animation restarts
+    void cardEl.offsetWidth;  // force reflow to restart animation
     cardEl.classList.add(cls);
     renderCard(index);
   }
@@ -367,22 +370,52 @@
   function navigate(delta) { navigateTo(current + delta); }
   window.navigate = navigate;
 
-  // Arrow keys (skip when typing in the notes textarea)
-  document.addEventListener('keydown', e => {
+  // Arrow keys (skip when typing in notes)
+  function _onKeyDown(e) {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
     if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(1);
+  }
+  // Remove any previous listener (in case initDigestViewer is called again)
+  document.removeEventListener('keydown', window._digestKeyDown);
+  window._digestKeyDown = _onKeyDown;
+  document.addEventListener('keydown', _onKeyDown);
+
+  // ── Notes — save to localStorage + API on change ──
+  const notesTextarea = document.getElementById('notes');
+
+  // Debounce: wait 800 ms after the user stops typing before hitting the API.
+  let _notesSaveTimer = null;
+
+  function saveNoteToApi(p, text) {
+    if (!p || !p.id || !weekTag) return;
+    fetch('/api/reports/' + encodeURIComponent(weekTag) + '/notes/' + p.id, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).catch(console.error);
+  }
+
+  notesTextarea.addEventListener('input', () => {
+    const p = POSTS[current];
+    if (!p || p.type === 'notes_summary' || p.type === 'cover') return;
+    const text = notesTextarea.value;
+    localStorage.setItem('note:' + p.link, text);
+
+    clearTimeout(_notesSaveTimer);
+    _notesSaveTimer = setTimeout(() => saveNoteToApi(p, text), 800);
   });
 
-  // Auto-save notes per post (keyed by permalink)
-  document.getElementById('notes').addEventListener('input', () => {
+  // Also save immediately on blur (so closing the viewer doesn't lose unsaved notes)
+  notesTextarea.addEventListener('blur', () => {
     const p = POSTS[current];
-    if (p.type === 'notes_summary' || p.type === 'cover') return;
-    localStorage.setItem('note:' + p.link, document.getElementById('notes').value);
+    if (!p || p.type === 'notes_summary' || p.type === 'cover') return;
+    clearTimeout(_notesSaveTimer);
+    saveNoteToApi(p, notesTextarea.value);
   });
 
   // Bullet-point: auto-insert "• " on Enter
-  document.getElementById('notes').addEventListener('keydown', e => {
+  notesTextarea.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const ta    = e.target;
@@ -394,7 +427,7 @@
   });
 
   // Bullet-point: seed empty textarea with "• " on focus
-  document.getElementById('notes').addEventListener('focus', e => {
+  notesTextarea.addEventListener('focus', e => {
     if (!e.target.value.trim()) {
       e.target.value = '• ';
       e.target.selectionStart = e.target.selectionEnd = e.target.value.length;
@@ -402,4 +435,4 @@
   });
 
   renderCard(0);
-})();
+};

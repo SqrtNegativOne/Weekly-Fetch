@@ -1,56 +1,129 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Project Overview
+## Project overview
 
-A Python script that fetches top Reddit posts via Reddit's public JSON API and writes a single combined HTML digest to `output/` per run. Subreddit lists live in external text files. Monthly subreddits are fetched automatically when a new calendar month is detected. Designed to run on a Windows schedule via `install.py`.
+A personal Windows app that fetches top posts from Reddit, Bluesky, Tumblr, and Instagram on a schedule, stores them in SQLite, and presents them in a native flashcard-style viewer (pywebview + FastAPI + Edge WebView2).
 
-## Commands
+Two entry points:
+
+| Script | Purpose |
+|--------|---------|
+| `app.py` | Opens the native app window. Run this to use the app. |
+| `src/main.py` | Headless fetch script. Windows Task Scheduler fires this silently. |
+
+## Setup
 
 ```bash
-# Install dependencies (requires Python 3.13+)
-python -m venv .venv
-.venv/Scripts/activate
-pip install -e .
+# Install deps and create .venv (uv handles everything)
+uv sync
 
-# Run the fetcher
-python main.py
+# Open the app
+uv run python app.py
 
-# Register the Windows Task Scheduler task (runs main.py every Saturday at 09:00)
-python install.py
+# Register the Windows scheduled task
+uv run python install.py
+
+# Type-check
+uv run ty check src/ app.py install.py
 ```
 
-There are no tests or linting configuration in this project.
+Requires Python 3.13+. Uses `uv` for package management and `ty` for type checking.
 
 ## Architecture
 
-Entry point is `main.py`. Logic is split across `src/`:
+```
+app.py              ← pywebview + uvicorn entry point
+src/
+  server.py         ← FastAPI routes + serves ui/ static files
+  db.py             ← SQLite helpers (init_db, save_posts, get_digest, save_note)
+  notify.py         ← winotify toast notification
+  config.py         ← constants, load_settings(), save_settings(), load_sources()
+  main.py           ← headless fetch: fetch → render HTML → save to DB → toast
+  fetch.py          ← Reddit JSON API fetcher
+  fetch_bluesky.py  ← Bluesky fetcher
+  fetch_tumblr.py   ← Tumblr fetcher
+  fetch_instagram.py← Instagram fetcher (instaloader)
+  render.py         ← generate_html() → standalone HTML digest files
+  schedule.py       ← is_due(), current_week_tag(), schedule_label(), state I/O
+  digest.css        ← styles for standalone HTML digests (referenced by render.py)
+  digest.js         ← flashcard viewer for standalone HTML digests
 
-- **`weekly.txt` / `monthly.txt`** — one subreddit name per line; loaded at import time via `load_list()` in `src/config.py`.
-- **`src/fetch.py`** — `fetch_subreddit(subreddit, time_filter, progress)` hits `https://www.reddit.com/r/{sub}/top.json` (no auth, requires the `User-Agent` header to avoid 429s), fetches top comments per post, filters by `MIN_KARMA`, returns up to `POST_LIMIT` posts. Each post dict has `title`, `link`, `score`, `type` (`text|image|video|gallery|link`), `content` (type-specific media fields), and `comments` (nested thread).
-- **`src/render.py`** — `generate_html(weekly, monthly, week_tag)` embeds all posts as a JSON blob into the HTML shell. The shell references `src/digest.css` and `src/digest.js`.
-- **`src/schedule.py`** — `should_fetch_monthly()` / `update_monthly_timestamp()` read/write `last_monthly.json` to gate monthly fetches to once per calendar month. `current_week_tag()` returns ISO week string like `2026-W08`.
-- **`src/digest.css`** — all styles for the viewer UI.
-- **`src/digest.js`** — all client-side logic: card rendering, navigation, background palette transitions (CSS `transition` on `.blob`), notes sidebar, keyboard shortcuts.
-- Output is a single file `output/digest_{week_tag}.html`. The `output/` directory is gitignored.
+ui/                 ← web frontend (served by FastAPI at /static/)
+  index.html        ← app shell: left nav + views + full-screen viewer overlay
+  app.js            ← SPA routing, API calls (reports, accounts, settings, tasks)
+  digest.js         ← flashcard viewer; initDigestViewer(posts, weekTag) function
+  digest.css        ← all styles: app-shell + viewer (blob bg, cards, sidebar)
 
-`install.py` uses Windows `schtasks` to register a scheduled task — it is Windows-only and not part of the fetch logic.
+accounts.json       ← platform account lists (reddit subreddits, bluesky handles, etc.)
+settings.json       ← output_dir, data_dir, schedule_day, schedule_time
+data/digests.db     ← SQLite: posts table + notes table (gitignored)
+output/             ← standalone HTML digests (gitignored)
+```
 
-## Viewer UI features
+## Data flow
 
-- Flashcard-style navigation (arrow keys or Prev/Next buttons) through all posts.
-- Animated blob background that smoothly cross-fades colours per subreddit (CSS `transition`, not JS animation).
-- Cover card shows week tag, post count, subreddit chips, estimated reading time (~200 wpm), and keyboard shortcut hints.
-- Post card shows title + score badge + media content. No subreddit meta line on individual cards (visible via the tab bar instead).
-- Comments rendered in a **separate sibling card** (`#card-comments`) below the post card, shown only when comments exist.
-- Notes sidebar auto-saves per post to `localStorage`. Notes summary card at the end.
+```
+Task Scheduler → src/main.py
+  fetch posts → save to data/digests.db → write output/digest_{tag}.html → toast
 
-## Key Constants (src/config.py)
+User runs app.py:
+  → FastAPI starts on random localhost port
+  → pywebview opens Edge WebView2 window → loads http://localhost:{port}
+  → sidebar lists week tags from DB
+  → click a week → flashcard viewer renders posts from DB
+  → edit a note → saved to DB via POST /api/reports/{tag}/notes/{post_id}
+  → Settings → Install Task → schtasks registers weekly job
+```
+
+## Key source files
+
+### `src/config.py`
+- `load_settings()` / `save_settings()` — read/write `settings.json`
+- `load_sources()` — parse `accounts.json` into `list[Source]`
+- `OUTPUT_DIR` — resolved from `settings.json["output_dir"]` at import time
+
+### `src/db.py` — SQLite schema
+```sql
+posts  (id, week_tag, platform, source_name, fetched_at, title, link UNIQUE,
+        score, post_type, content_json, comments_json)
+notes  (post_id, week_tag, note_text, updated_at)  PRIMARY KEY (post_id, week_tag)
+```
+Posts are upserted on `link` (deduplication). Notes are deleted when text is blank.
+
+### `src/schedule.py`
+- `is_due(source, state, now)` — checks fetch cadence against `last_fetch.json`
+- Schedule dict keys: `every_weekday`, `every_n_days`, `every_n_weeks`, `every_n_months`, `day_n_of_month`
+
+### `src/server.py` — API routes
+```
+GET  /api/reports                → list week tags
+GET  /api/reports/{tag}          → posts + notes for a week
+POST /api/reports/{tag}/notes/{id} → upsert note
+GET/POST /api/accounts           → accounts.json
+GET/POST /api/settings           → settings.json
+POST /api/install-task           → run install.py (registers schtasks)
+POST /api/remove-task            → schtasks /Delete
+POST /api/run-now                → run src/main.py in a background thread
+```
+
+### `ui/digest.js`
+Adapted from `src/digest.js` for the app. Key differences:
+- Exported as `window.initDigestViewer(posts, weekTag)` — data passed as argument, not embedded JSON
+- Notes pre-populated from `post.note` (DB), then synced to API on blur (debounced 800 ms)
+- `localStorage` used as session cache; API is the durable store
+
+### `install.py`
+Reads `schedule_day`/`schedule_time` from `settings.json`. Task name: `WeeklyFetchDigest`.
+Script path: `src/main.py` (relative to project root).
+
+## Key constants (`src/config.py`)
 
 | Constant | Default | Purpose |
-|---|---|---|
-| `POST_LIMIT` | 20 | Max posts per subreddit |
-| `MIN_KARMA` | 100 | Minimum score to include a post |
-| `OUTPUT_DIR` | `output/` | Where HTML files are written |
-| `LAST_MONTHLY_PATH` | `last_monthly.json` | Tracks when monthly subreddits were last fetched |
+|----------|---------|---------|
+| `POST_LIMIT` | 20 | Max posts fetched per source |
+| `MIN_KARMA` | 100 | Default minimum score threshold |
+| `OUTPUT_DIR` | `output/` | Where standalone HTML files are written |
+| `SETTINGS_PATH` | `settings.json` | App settings |
+| `ACCOUNTS_PATH` | `accounts.json` | Platform account lists |
