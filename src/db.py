@@ -78,8 +78,8 @@ def save_posts(db_path: Path, week_tag: str, platform: str,
             ))
 
 
-def list_week_tags(db_path: Path) -> list[str]:
-    """Return distinct week tags that have posts, newest first."""
+def list_tags(db_path: Path) -> list[str]:
+    """Return distinct day tags that have posts, newest first."""
     if not db_path.exists():
         return []
     with _connect(db_path) as conn:

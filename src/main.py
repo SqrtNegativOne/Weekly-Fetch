@@ -4,7 +4,7 @@ Run from the project root:
     python src/main.py
 
 This script is what Windows Task Scheduler fires on a schedule.
-It fetches posts, writes an HTML digest, saves to SQLite, and shows a toast.
+It fetches posts, saves to SQLite, and shows a toast notification.
 """
 import sys
 from datetime import datetime
@@ -16,26 +16,24 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from tqdm import tqdm
 
-from config import OUTPUT_DIR, POST_LIMIT, load_settings, load_sources
+from config import BASE_DIR, POST_LIMIT, load_settings, load_sources
 from db import init_db, save_posts
 from fetch import fetch_subreddit
 from fetch_bluesky import fetch_bluesky
 from fetch_instagram import fetch_instagram
 from fetch_tumblr import fetch_tumblr
 from notify import notify_digest_ready
-from render import generate_html
 from schedule import (
-    current_week_tag, is_due, load_state, mark_fetched,
+    current_day_tag, is_due, load_state, mark_fetched,
     reddit_time_filter, save_state,
 )
 
 
 def main():
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    week_tag = current_week_tag()
-    now      = datetime.now()
-    state    = load_state()
-    sources  = load_sources()
+    day_tag = current_day_tag()
+    now     = datetime.now()
+    state   = load_state()
+    sources = load_sources()
 
     due = [s for s in sources if is_due(s, state, now)]
     if not due:
@@ -87,29 +85,21 @@ def main():
 
     save_state(state)
 
-    # Build a map of name → schedule dict for render.py
-    schedule_map = {s.name: s.schedule for s in due if s.name in results}
-
-    page = generate_html(results, schedule_map, week_tag)
-    out  = OUTPUT_DIR / f"digest_{week_tag}.html"
-    out.write_text(page, encoding="utf-8")
-    print(f"Written: {out}")
-
     # ── Save to SQLite ────────────────────────────────────────────────────────
     settings = load_settings()
     data_dir = Path(settings["data_dir"])
     if not data_dir.is_absolute():
-        data_dir = Path(__file__).parent.parent / data_dir
+        data_dir = BASE_DIR / data_dir
     db_path = data_dir / "digests.db"
     init_db(db_path)
     for source in due:
         if source.name in results:
-            save_posts(db_path, week_tag, source.platform, source.name,
+            save_posts(db_path, day_tag, source.platform, source.name,
                        results[source.name])
     print(f"Saved to DB: {db_path}")
 
     # ── Toast notification ────────────────────────────────────────────────────
-    notify_digest_ready(week_tag, str(out.resolve()))
+    notify_digest_ready(day_tag)
 
 
 if __name__ == "__main__":

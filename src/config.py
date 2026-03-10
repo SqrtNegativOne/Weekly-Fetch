@@ -1,15 +1,40 @@
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+
 # ── Directory references ─────────────────────────────────────────────────────
-_SRC_DIR  = Path(__file__).parent          # …/src/
-_ROOT_DIR = _SRC_DIR.parent               # project root
+
+def _get_base_dir() -> Path:
+    """User data directory (accounts, settings, output, data).
+
+    Frozen (PyInstaller .exe): the folder containing the .exe.
+    Source:                     the repo root (parent of src/).
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent
+
+
+def _get_bundle_dir() -> Path:
+    """Bundled-asset directory (ui/).
+
+    Frozen: sys._MEIPASS (PyInstaller's internal extraction folder).
+    Source: same as BASE_DIR (the repo root).
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)
+    return Path(__file__).parent.parent
+
+
+BASE_DIR   = _get_base_dir()
+BUNDLE_DIR = _get_bundle_dir()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 POST_LIMIT    = 20
-ACCOUNTS_PATH = _ROOT_DIR / "accounts.json"
-SETTINGS_PATH = _ROOT_DIR / "settings.json"
+ACCOUNTS_PATH = BASE_DIR / "accounts.json"
+SETTINGS_PATH = BASE_DIR / "settings.json"
 
 HEADERS = {"User-Agent": "weekly-fetch/1.0"}
 
@@ -17,7 +42,6 @@ HEADERS = {"User-Agent": "weekly-fetch/1.0"}
 MIN_KARMA = 100
 
 _DEFAULT_SETTINGS = {
-    "output_dir":    "output",
     "data_dir":      "data",
     "schedule_day":  "Saturday",
     "schedule_time": "09:00",
@@ -41,17 +65,6 @@ def save_settings(data: dict) -> None:
     SETTINGS_PATH.write_text(
         json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-
-
-def _resolve_output_dir() -> Path:
-    """Return the output directory from settings, resolved against project root."""
-    p = Path(load_settings()["output_dir"])
-    return p if p.is_absolute() else _ROOT_DIR / p
-
-
-# OUTPUT_DIR is evaluated at import time.  Code that writes HTML should use
-# this constant; it reads settings.json so the value is dynamic per run.
-OUTPUT_DIR = _resolve_output_dir()
 
 
 # ── Source dataclass ─────────────────────────────────────────────────────────

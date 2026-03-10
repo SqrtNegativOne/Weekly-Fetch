@@ -372,6 +372,104 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .form-group select option { background: #1a1a3e; }
 
+/* ── Entry list (structured accounts) ────────── */
+.entry-list {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.entry-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  transition: border-color var(--dur);
+}
+.entry-row:hover { border-color: var(--border-light); }
+.entry-row:focus-within { border-color: var(--accent); }
+
+.entry-name {
+  flex: 2; min-width: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--text-1);
+  outline: none;
+  transition: border-color var(--dur);
+}
+.entry-name:focus { border-color: var(--accent); }
+.entry-name::placeholder { color: var(--text-4); }
+
+.entry-schedule {
+  flex: 1.2; min-width: 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--text-2);
+  outline: none;
+  cursor: pointer;
+}
+.entry-schedule:focus { border-color: var(--accent); }
+.entry-schedule option { background: #1a1a3e; }
+
+.entry-threshold {
+  width: 72px; flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  text-align: center;
+  outline: none;
+}
+.entry-threshold:focus { border-color: var(--accent); }
+.entry-threshold::placeholder { color: var(--text-4); font-family: var(--font-sans); }
+
+.entry-remove {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.entry-remove:hover {
+  background: rgba(239,68,68,0.12);
+  border-color: rgba(239,68,68,0.25);
+  color: var(--error-text);
+}
+
+.btn-add {
+  align-self: flex-start;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border-light);
+  border-radius: var(--r-sm);
+  padding: 7px 16px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all var(--dur);
+}
+.btn-add:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
 /* Form action buttons */
 .form-actions {
   display: flex; flex-wrap: wrap; gap: 10px;

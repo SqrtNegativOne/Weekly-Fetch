@@ -17,6 +17,11 @@ dependencies = [
     "aiofiles>=23.2",
 ]
 
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.0",
+]
+
 [tool.ty.environment]
 # src/ modules import each other without the "src." prefix (sys.path is patched at runtime)
 extra-paths = ["src"]

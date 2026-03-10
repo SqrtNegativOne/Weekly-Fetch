@@ -27,52 +27,65 @@ uv run python install.py
 
 # Type-check
 uv run ty check src/ app.py install.py
+
+# Build distributable .exe (requires dev deps)
+uv sync --group dev
+uv run pyinstaller WeeklyFetch.spec
+# Output: dist/WeeklyFetch/WeeklyFetch.exe
 ```
 
 Requires Python 3.13+. Uses `uv` for package management and `ty` for type checking.
 
+## Distribution
+
+PyInstaller builds a standalone `.exe` in `dist/WeeklyFetch/`. Users unzip and double-click — no Python required.
+
+- `WeeklyFetch.exe` — opens the app window
+- `WeeklyFetch.exe --fetch` — headless fetch (used by Task Scheduler)
+
+GitHub Releases are automated: push a tag like `v1.0.0` and the workflow builds + uploads a zip.
+
 ## Architecture
 
 ```
-app.py              ← pywebview + uvicorn entry point
+app.py              ← pywebview + uvicorn entry point (also: app.py --fetch for headless)
+WeeklyFetch.spec    ← PyInstaller build configuration
+install.py          ← register Windows scheduled task
 src/
   server.py         ← FastAPI routes + serves ui/ static files
   db.py             ← SQLite helpers (init_db, save_posts, get_digest, save_note)
   notify.py         ← winotify toast notification
-  config.py         ← constants, load_settings(), save_settings(), load_sources()
-  main.py           ← headless fetch: fetch → render HTML → save to DB → toast
+  config.py         ← BASE_DIR, BUNDLE_DIR, load_settings(), save_settings(), load_sources()
+  main.py           ← headless fetch: fetch → save to DB → toast
   fetch.py          ← Reddit JSON API fetcher
   fetch_bluesky.py  ← Bluesky fetcher
   fetch_tumblr.py   ← Tumblr fetcher
   fetch_instagram.py← Instagram fetcher (instaloader)
-  render.py         ← generate_html() → standalone HTML digest files
-  schedule.py       ← is_due(), current_week_tag(), schedule_label(), state I/O
-  digest.css        ← styles for standalone HTML digests (referenced by render.py)
-  digest.js         ← flashcard viewer for standalone HTML digests
+  schedule.py       ← is_due(), current_day_tag(), schedule_label(), state I/O
 
 ui/                 ← web frontend (served by FastAPI at /static/)
-  index.html        ← app shell: left nav + views + full-screen viewer overlay
-  app.js            ← SPA routing, API calls (reports, accounts, settings, tasks)
+  index.html        ← app shell: left nav + views + toast container + viewer overlay
+  app.js            ← SPA routing, API calls, toast notifications
   digest.js         ← flashcard viewer; initDigestViewer(posts, weekTag) function
-  digest.css        ← all styles: app-shell + viewer (blob bg, cards, sidebar)
+  digest.css        ← all styles: design tokens + app-shell + viewer
 
 accounts.json       ← platform account lists (reddit subreddits, bluesky handles, etc.)
-settings.json       ← output_dir, data_dir, schedule_day, schedule_time
+settings.json       ← data_dir, schedule_day, schedule_time
 data/digests.db     ← SQLite: posts table + notes table (gitignored)
-output/             ← standalone HTML digests (gitignored)
+.github/workflows/  ← release.yml: build .exe on tag push
 ```
 
 ## Data flow
 
 ```
 Task Scheduler → src/main.py
-  fetch posts → save to data/digests.db → write output/digest_{tag}.html → toast
+  fetch posts → save to data/digests.db → toast notification
 
 User runs app.py:
   → FastAPI starts on random localhost port
   → pywebview opens Edge WebView2 window → loads http://localhost:{port}
-  → sidebar lists week tags from DB
-  → click a week → flashcard viewer renders posts from DB
+  → sidebar lists day tags from DB
+  → click a day → flashcard viewer renders posts from DB
   → edit a note → saved to DB via POST /api/reports/{tag}/notes/{post_id}
   → Settings → Install Task → schtasks registers weekly job
 ```
@@ -80,9 +93,10 @@ User runs app.py:
 ## Key source files
 
 ### `src/config.py`
+- `BASE_DIR` — user data root (exe dir when frozen, repo root when source)
+- `BUNDLE_DIR` — bundled assets root (`sys._MEIPASS` when frozen, repo root when source)
 - `load_settings()` / `save_settings()` — read/write `settings.json`
 - `load_sources()` — parse `accounts.json` into `list[Source]`
-- `OUTPUT_DIR` — resolved from `settings.json["output_dir"]` at import time
 
 ### `src/db.py` — SQLite schema
 ```sql
@@ -98,8 +112,8 @@ Posts are upserted on `link` (deduplication). Notes are deleted when text is bla
 
 ### `src/server.py` — API routes
 ```
-GET  /api/reports                → list week tags
-GET  /api/reports/{tag}          → posts + notes for a week
+GET  /api/reports                → list day tags
+GET  /api/reports/{tag}          → posts + notes for a day
 POST /api/reports/{tag}/notes/{id} → upsert note
 GET/POST /api/accounts           → accounts.json
 GET/POST /api/settings           → settings.json
@@ -109,8 +123,8 @@ POST /api/run-now                → run src/main.py in a background thread
 ```
 
 ### `ui/digest.js`
-Adapted from `src/digest.js` for the app. Key differences:
-- Exported as `window.initDigestViewer(posts, weekTag)` — data passed as argument, not embedded JSON
+Flashcard viewer for the app.
+- Exported as `window.initDigestViewer(posts, weekTag)` — data passed as argument
 - Notes pre-populated from `post.note` (DB), then synced to API on blur (debounced 800 ms)
 - `localStorage` used as session cache; API is the durable store
 
@@ -124,6 +138,5 @@ Script path: `src/main.py` (relative to project root).
 |----------|---------|---------|
 | `POST_LIMIT` | 20 | Max posts fetched per source |
 | `MIN_KARMA` | 100 | Default minimum score threshold |
-| `OUTPUT_DIR` | `output/` | Where standalone HTML files are written |
 | `SETTINGS_PATH` | `settings.json` | App settings |
 | `ACCOUNTS_PATH` | `accounts.json` | Platform account lists |

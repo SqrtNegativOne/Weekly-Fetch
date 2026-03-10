@@ -63,10 +63,18 @@ function showView(name) {
 
 // ── Report list ───────────────────────────────────────────────────────────────
 
-function formatWeekTag(tag) {
-  var m = tag.match(/^(\d{4})-W(\d+)$/);
-  if (m) return { week: 'Week ' + parseInt(m[2]), year: m[1] };
-  return { week: tag, year: '' };
+function formatTag(tag) {
+  // Date-based tags: "2026-03-10" → { label: "Mar 10", year: "2026" }
+  var m = tag.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var month = months[parseInt(m[2], 10) - 1] || m[2];
+    return { label: month + ' ' + parseInt(m[3], 10), year: m[1] };
+  }
+  // Legacy week tags: "2026-W10" → { label: "Week 10", year: "2026" }
+  var w = tag.match(/^(\d{4})-W(\d+)$/);
+  if (w) return { label: 'Week ' + parseInt(w[2]), year: w[1] };
+  return { label: tag, year: '' };
 }
 
 async function loadReports() {
@@ -94,10 +102,10 @@ async function loadReports() {
     btn.className = 'report-item';
     btn.dataset.tag = tag;
 
-    var info = formatWeekTag(tag);
+    var info = formatTag(tag);
     if (info.year) {
       btn.innerHTML =
-        '<span class="report-week">' + info.week + '</span>' +
+        '<span class="report-week">' + info.label + '</span>' +
         '<span class="report-year">' + info.year + '</span>';
     } else {
       btn.textContent = tag;
@@ -160,7 +168,7 @@ async function openReport(tag, btnEl) {
   var allPosts = [
     {
       type:        'cover',
-      title:       'Weekly Digest',
+      title:       'Digest',
       link:        '__cover__',
       week_tag:    tag,
       generated:   generated,
@@ -194,22 +202,132 @@ window.viewerBack = function () {
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
-function textareaToEntries(text) {
-  return text.split('\n')
-    .map(function (l) { return l.trim(); })
-    .filter(Boolean)
-    .map(function (l) {
-      if (l.startsWith('{')) {
-        try { return JSON.parse(l); } catch (e) { return l; }
-      }
-      return l;
-    });
+// Platform config: maps platform → { listKey, thresholdKey, namePlaceholder }
+var PLATFORM_CONFIG = {
+  reddit:    { listKey: 'subreddits', thresholdKey: 'karma',    globalKey: 'min_karma', namePlaceholder: 'MachineLearning' },
+  bluesky:   { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'jay.bsky.social' },
+  tumblr:    { listKey: 'blogs',      thresholdKey: 'min_notes', globalKey: 'min_notes', namePlaceholder: 'staff' },
+  instagram: { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'natgeo' },
+};
+
+// Schedule presets the user can pick from
+var SCHEDULE_OPTIONS = [
+  { label: 'Every Saturday',   value: { every_weekday: 'Saturday' } },
+  { label: 'Every Sunday',     value: { every_weekday: 'Sunday' } },
+  { label: 'Every Monday',     value: { every_weekday: 'Monday' } },
+  { label: 'Every Tuesday',    value: { every_weekday: 'Tuesday' } },
+  { label: 'Every Wednesday',  value: { every_weekday: 'Wednesday' } },
+  { label: 'Every Thursday',   value: { every_weekday: 'Thursday' } },
+  { label: 'Every Friday',     value: { every_weekday: 'Friday' } },
+  { label: 'Daily',            value: { every_n_days: 1 } },
+  { label: 'Every 3 days',     value: { every_n_days: 3 } },
+  { label: 'Weekly',           value: { every_n_weeks: 1 } },
+  { label: 'Every 2 weeks',    value: { every_n_weeks: 2 } },
+  { label: 'Monthly',          value: { every_n_months: 1 } },
+];
+
+function scheduleToIndex(sched) {
+  if (!sched) return 0;
+  for (var i = 0; i < SCHEDULE_OPTIONS.length; i++) {
+    var opt = SCHEDULE_OPTIONS[i].value;
+    var keys = Object.keys(opt);
+    if (keys.length === 1 && keys[0] in sched && sched[keys[0]] === opt[keys[0]]) return i;
+  }
+  return 0;
 }
 
-function entriesToTextarea(entries) {
-  return entries.map(function (e) {
-    return typeof e === 'string' ? e : JSON.stringify(e);
-  }).join('\n');
+function createEntryRow(platform, entry) {
+  // entry can be a string (legacy: just a name) or an object { name, schedule, <threshold> }
+  var name = typeof entry === 'string' ? entry : (entry.name || '');
+  var schedule = typeof entry === 'object' ? entry.schedule : null;
+  var cfg = PLATFORM_CONFIG[platform];
+  var threshold = '';
+  if (typeof entry === 'object' && entry[cfg.thresholdKey] != null) {
+    threshold = String(entry[cfg.thresholdKey]);
+  }
+
+  var row = document.createElement('div');
+  row.className = 'entry-row';
+
+  // Name input
+  var nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'entry-name';
+  nameInput.placeholder = cfg.namePlaceholder;
+  nameInput.value = name;
+
+  // Schedule dropdown
+  var schedSelect = document.createElement('select');
+  schedSelect.className = 'entry-schedule';
+  SCHEDULE_OPTIONS.forEach(function (opt, i) {
+    var option = document.createElement('option');
+    option.value = i;
+    option.textContent = opt.label;
+    schedSelect.appendChild(option);
+  });
+  schedSelect.value = scheduleToIndex(schedule);
+
+  // Local threshold override (optional)
+  var threshInput = document.createElement('input');
+  threshInput.type = 'number';
+  threshInput.className = 'entry-threshold';
+  threshInput.placeholder = 'default';
+  threshInput.min = '0';
+  threshInput.title = 'Local threshold override (leave empty to use global)';
+  threshInput.value = threshold;
+
+  // Remove button
+  var removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'entry-remove';
+  removeBtn.textContent = '\u00d7';
+  removeBtn.title = 'Remove';
+  removeBtn.onclick = function () { row.remove(); };
+
+  row.appendChild(nameInput);
+  row.appendChild(schedSelect);
+  row.appendChild(threshInput);
+  row.appendChild(removeBtn);
+
+  return row;
+}
+
+window.addEntry = function (platform) {
+  var container = document.getElementById(platform + '-entries');
+  container.appendChild(createEntryRow(platform, ''));
+  // Focus the new name input
+  var inputs = container.querySelectorAll('.entry-name');
+  inputs[inputs.length - 1].focus();
+};
+
+function populateEntries(platform, entries) {
+  var container = document.getElementById(platform + '-entries');
+  container.innerHTML = '';
+  (entries || []).forEach(function (entry) {
+    container.appendChild(createEntryRow(platform, entry));
+  });
+}
+
+function collectEntries(platform) {
+  var container = document.getElementById(platform + '-entries');
+  var rows = container.querySelectorAll('.entry-row');
+  var cfg = PLATFORM_CONFIG[platform];
+  var entries = [];
+  rows.forEach(function (row) {
+    var name = row.querySelector('.entry-name').value.trim();
+    if (!name) return;
+    var schedIdx = parseInt(row.querySelector('.entry-schedule').value) || 0;
+    var threshVal = row.querySelector('.entry-threshold').value.trim();
+    var entry = {
+      name: name,
+      schedule: SCHEDULE_OPTIONS[schedIdx].value,
+    };
+    if (threshVal !== '') {
+      entry[cfg.thresholdKey] = parseInt(threshVal) || 0;
+    }
+    entries.push(entry);
+  });
+  return entries;
 }
 
 async function loadAccounts() {
@@ -227,32 +345,33 @@ async function loadAccounts() {
   var ig = data.instagram || {};
 
   document.getElementById('reddit-min-karma').value    = r.min_karma ?? 100;
-  document.getElementById('reddit-subreddits').value   = entriesToTextarea(r.subreddits || []);
   document.getElementById('bluesky-min-likes').value   = b.min_likes ?? 10;
-  document.getElementById('bluesky-accounts').value    = entriesToTextarea(b.accounts || []);
   document.getElementById('tumblr-min-notes').value    = t.min_notes ?? 5;
-  document.getElementById('tumblr-blogs').value        = entriesToTextarea(t.blogs || []);
   document.getElementById('instagram-min-likes').value = ig.min_likes ?? 100;
-  document.getElementById('instagram-accounts').value  = entriesToTextarea(ig.accounts || []);
+
+  populateEntries('reddit',    r.subreddits);
+  populateEntries('bluesky',   b.accounts);
+  populateEntries('tumblr',    t.blogs);
+  populateEntries('instagram', ig.accounts);
 }
 
 async function saveAccounts() {
   var data = {
     reddit: {
       min_karma:  parseInt(document.getElementById('reddit-min-karma').value) || 100,
-      subreddits: textareaToEntries(document.getElementById('reddit-subreddits').value),
+      subreddits: collectEntries('reddit'),
     },
     bluesky: {
       min_likes: parseInt(document.getElementById('bluesky-min-likes').value) || 10,
-      accounts:  textareaToEntries(document.getElementById('bluesky-accounts').value),
+      accounts:  collectEntries('bluesky'),
     },
     tumblr: {
       min_notes: parseInt(document.getElementById('tumblr-min-notes').value) || 5,
-      blogs:     textareaToEntries(document.getElementById('tumblr-blogs').value),
+      blogs:     collectEntries('tumblr'),
     },
     instagram: {
       min_likes: parseInt(document.getElementById('instagram-min-likes').value) || 100,
-      accounts:  textareaToEntries(document.getElementById('instagram-accounts').value),
+      accounts:  collectEntries('instagram'),
     },
   };
 
@@ -275,7 +394,6 @@ async function loadSettings() {
     return;
   }
 
-  document.getElementById('setting-output-dir').value   = data.output_dir   || 'output';
   document.getElementById('setting-data-dir').value     = data.data_dir     || 'data';
   document.getElementById('setting-schedule-time').value = data.schedule_time || '09:00';
 
@@ -290,7 +408,6 @@ async function loadSettings() {
 
 function getSettingsFromForm() {
   return {
-    output_dir:    document.getElementById('setting-output-dir').value.trim(),
     data_dir:      document.getElementById('setting-data-dir').value.trim(),
     schedule_day:  document.getElementById('setting-schedule-day').value,
     schedule_time: document.getElementById('setting-schedule-time').value,

@@ -47,48 +47,52 @@
       <div class="form-section" data-platform="reddit">
         <div class="form-section-title">Reddit</div>
         <div class="form-group">
-          <label>Min karma <span class="label-hint">minimum post score to include</span></label>
+          <label>Default min karma <span class="label-hint">global threshold (overridable per subreddit)</span></label>
           <input type="number" id="reddit-min-karma" value="100" min="0">
         </div>
         <div class="form-group">
-          <label>Subreddits <span class="label-hint">one per line &mdash; plain name or JSON with schedule</span></label>
-          <textarea id="reddit-subreddits" rows="6" placeholder="MachineLearning&#10;productivity&#10;getdisciplined"></textarea>
+          <label>Subreddits</label>
+          <div id="reddit-entries" class="entry-list"></div>
+          <button type="button" class="btn btn-add" onclick="addEntry('reddit')">+ Add subreddit</button>
         </div>
       </div>
 
       <div class="form-section" data-platform="bluesky">
         <div class="form-section-title">Bluesky</div>
         <div class="form-group">
-          <label>Min likes</label>
+          <label>Default min likes <span class="label-hint">global threshold (overridable per account)</span></label>
           <input type="number" id="bluesky-min-likes" value="10" min="0">
         </div>
         <div class="form-group">
-          <label>Accounts <span class="label-hint">one handle per line, e.g. jay.bsky.social</span></label>
-          <textarea id="bluesky-accounts" rows="4" placeholder="jay.bsky.social"></textarea>
+          <label>Accounts</label>
+          <div id="bluesky-entries" class="entry-list"></div>
+          <button type="button" class="btn btn-add" onclick="addEntry('bluesky')">+ Add account</button>
         </div>
       </div>
 
       <div class="form-section" data-platform="tumblr">
         <div class="form-section-title">Tumblr</div>
         <div class="form-group">
-          <label>Min notes</label>
+          <label>Default min notes <span class="label-hint">global threshold (overridable per blog)</span></label>
           <input type="number" id="tumblr-min-notes" value="5" min="0">
         </div>
         <div class="form-group">
-          <label>Blogs <span class="label-hint">one name per line, e.g. staff</span></label>
-          <textarea id="tumblr-blogs" rows="4" placeholder="staff"></textarea>
+          <label>Blogs</label>
+          <div id="tumblr-entries" class="entry-list"></div>
+          <button type="button" class="btn btn-add" onclick="addEntry('tumblr')">+ Add blog</button>
         </div>
       </div>
 
       <div class="form-section" data-platform="instagram">
         <div class="form-section-title">Instagram</div>
         <div class="form-group">
-          <label>Min likes</label>
+          <label>Default min likes <span class="label-hint">global threshold (overridable per account)</span></label>
           <input type="number" id="instagram-min-likes" value="100" min="0">
         </div>
         <div class="form-group">
-          <label>Accounts <span class="label-hint">one username per line, e.g. natgeo</span></label>
-          <textarea id="instagram-accounts" rows="4" placeholder="natgeo"></textarea>
+          <label>Accounts</label>
+          <div id="instagram-entries" class="entry-list"></div>
+          <button type="button" class="btn btn-add" onclick="addEntry('instagram')">+ Add account</button>
         </div>
       </div>
 
@@ -104,11 +108,7 @@
       <div class="app-view-header">Settings</div>
 
       <div class="form-section">
-        <div class="form-section-title">Directories</div>
-        <div class="form-group">
-          <label>Output directory <span class="label-hint">where HTML digest files are written</span></label>
-          <input type="text" id="setting-output-dir" placeholder="output">
-        </div>
+        <div class="form-section-title">Storage</div>
         <div class="form-group">
           <label>Data directory <span class="label-hint">where the SQLite database is stored</span></label>
           <input type="text" id="setting-data-dir" placeholder="data">

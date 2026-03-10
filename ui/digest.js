@@ -92,7 +92,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
     return btn;
   }
 
-  const coverBtn = makeTab('⊙ Digest', 'tab-special');
+  const coverBtn = makeTab('\u2299 Digest', 'tab-special');
   coverBtn.onclick = () => navigateTo(0);
   tabDefs.push({ start: 0, end: 0, el: coverBtn });
 
@@ -181,7 +181,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
 
     document.getElementById('card').innerHTML =
       '<div class="cover-card">' +
-        '<div class="cover-eyebrow">Weekly Digest</div>' +
+        '<div class="cover-eyebrow">Digest</div>' +
         '<div class="cover-week">' + escAttr(p.week_tag) + '</div>' +
         '<div class="cover-meta">Generated ' + escAttr(p.generated) +
           ' &nbsp;&middot;&nbsp; ' + p.total_posts + ' posts' +

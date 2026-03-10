@@ -4,18 +4,17 @@ A personal Windows app that pulls top posts from Reddit, Bluesky, Tumblr, and In
 
 Posts are stored in SQLite. Notes you write per-post are saved there too. The viewer runs inside a native Edge WebView2 window (no browser tab needed).
 
-## Quick start
+## Install (no Python required)
+
+Download the latest `.zip` from [Releases](../../releases), unzip anywhere, and double-click `WeeklyFetch.exe`.
+
+## Develop from source
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-python -m ensurepip   # venv ships without pip
-pip install -e .
-
-python app.py         # open the app
+# Requires Python 3.13+ and uv
+uv sync
+uv run python app.py
 ```
-
-Requires Python 3.13+ and Windows (for the native window and toast notifications).
 
 ## How it works
 
@@ -51,6 +50,7 @@ Click any week tag in the sidebar to open the flashcard viewer. Use arrow keys o
 
 ```
 app.py              ← open the app (run this)
+WeeklyFetch.spec    ← PyInstaller build config
 install.py          ← register/update the scheduled task
 src/
   main.py           ← headless fetch script (run by Task Scheduler)

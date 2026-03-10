@@ -31,16 +31,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 # Resolve paths relative to this file (src/server.py)
-_SRC  = Path(__file__).parent   # …/src/
-_ROOT = _SRC.parent             # project root
-_UI   = _ROOT / "ui"
+_SRC = Path(__file__).parent   # …/src/
 
 # Ensure src/ is importable — needed when this module is imported from app.py
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from config import ACCOUNTS_PATH, load_settings, save_settings
-from db import get_digest, init_db, list_week_tags, save_note
+from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
+from db import get_digest, init_db, list_tags, save_note
+
+_UI = BUNDLE_DIR / "ui"
 
 
 def _db_path() -> Path:
@@ -48,7 +48,7 @@ def _db_path() -> Path:
     settings = load_settings()
     p = Path(settings["data_dir"])
     if not p.is_absolute():
-        p = _ROOT / p
+        p = BASE_DIR / p
     return p / "digests.db"
 
 
@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
     def list_reports() -> list:
         db = _db_path()
         init_db(db)
-        return list_week_tags(db)
+        return list_tags(db)
 
     @app.get("/api/reports/{tag}")
     def get_report(tag: str) -> list:
@@ -111,16 +111,36 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     # ── Task management ───────────────────────────────────────────────────────
+
+    _frozen = getattr(sys, "frozen", False)
+
     @app.post("/api/install-task")
     async def install_task(request: Request) -> dict:
         """Save settings (if a body is provided) then re-register the task."""
         body = await request.json()
         if body:
             save_settings(body)
-        result = subprocess.run(
-            [sys.executable, str(_ROOT / "install.py")],
-            capture_output=True, text=True, cwd=str(_ROOT),
-        )
+
+        if _frozen:
+            # Frozen exe: register the exe itself with --fetch flag
+            settings = load_settings()
+            day_abbr = settings["schedule_day"][:3].upper()
+            task_cmd = f'"{sys.executable}" --fetch'
+            result = subprocess.run(
+                ["schtasks", "/Create", "/F",
+                 "/SC", "WEEKLY", "/D", day_abbr,
+                 "/ST", settings["schedule_time"],
+                 "/TN", "WeeklyFetchDigest",
+                 "/TR", task_cmd,
+                 "/RL", "LIMITED"],
+                capture_output=True, text=True,
+            )
+        else:
+            result = subprocess.run(
+                [sys.executable, str(BASE_DIR / "install.py")],
+                capture_output=True, text=True, cwd=str(BASE_DIR),
+            )
+
         if result.returncode != 0:
             raise HTTPException(
                 status_code=500,
@@ -142,7 +162,11 @@ def create_app() -> FastAPI:
     def run_now() -> dict:
         """Kick off a fetch in a daemon thread so the API responds immediately."""
         def _worker():
-            subprocess.run([sys.executable, str(_SRC / "main.py")], cwd=str(_ROOT))
+            if _frozen:
+                subprocess.run([sys.executable, "--fetch"], cwd=str(BASE_DIR))
+            else:
+                subprocess.run([sys.executable, str(_SRC / "main.py")],
+                               cwd=str(BASE_DIR))
 
         threading.Thread(target=_worker, daemon=True).start()
         return {"ok": True, "msg": "Fetch started — check back in a minute."}

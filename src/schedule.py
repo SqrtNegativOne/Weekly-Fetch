@@ -2,10 +2,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from config import Source
+from config import BASE_DIR, Source
 
-_ROOT_DIR       = Path(__file__).parent.parent
-LAST_FETCH_PATH = _ROOT_DIR / "last_fetch.json"
+LAST_FETCH_PATH = BASE_DIR / "last_fetch.json"
 
 WEEKDAY_MAP = {
     "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
@@ -13,12 +12,11 @@ WEEKDAY_MAP = {
 }
 
 
-# ── Week tag ─────────────────────────────────────────────────────────────────
+# ── Day tag ──────────────────────────────────────────────────────────────────
 
-def current_week_tag() -> str:
-    now = datetime.now()
-    year, week, _ = now.isocalendar()
-    return f"{year}-W{week:02d}"
+def current_day_tag() -> str:
+    """Return today's date as an ISO string like '2026-03-10'."""
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 # ── State persistence ─────────────────────────────────────────────────────────

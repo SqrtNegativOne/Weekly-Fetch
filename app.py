@@ -73,4 +73,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--fetch" in sys.argv:
+        # Headless fetch mode — used by Task Scheduler when running
+        # the frozen .exe, e.g.: WeeklyFetch.exe --fetch
+        from main import main as fetch_main
+        fetch_main()
+    else:
+        main()
