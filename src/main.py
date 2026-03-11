@@ -124,13 +124,18 @@ def main(force: bool = False):
 
                 # Compute the cutoff datetime from the last fetch so
                 # fetchers only return posts newer than that.
-                last_str = state.get(f"{source.platform}/{source.name}")
-                if last_str:
-                    since = datetime.fromisoformat(last_str)
-                    if since.tzinfo is None:
-                        since = since.replace(tzinfo=timezone.utc)
-                else:
+                # In force mode, skip the cutoff entirely — fetchers use
+                # their default 7-day window, so we always get recent posts.
+                if force:
                     since = None
+                else:
+                    last_str = state.get(f"{source.platform}/{source.name}")
+                    if last_str:
+                        since = datetime.fromisoformat(last_str)
+                        if since.tzinfo is None:
+                            since = since.replace(tzinfo=timezone.utc)
+                    else:
+                        since = None
 
                 fetcher = FETCHERS.get(source.platform)
                 if fetcher is None:

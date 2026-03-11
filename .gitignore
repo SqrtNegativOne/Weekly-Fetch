@@ -183,3 +183,5 @@ cython_debug/
 output/*
 
 bash.exe.stackdump
+
+todo.txt

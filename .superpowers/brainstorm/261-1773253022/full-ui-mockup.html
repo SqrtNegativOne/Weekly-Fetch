@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Fetch — Purple Dusk Palette Preview</title>
+<style>
+  /* ── Purple Dusk tokens ── */
+  :root {
+    --bg-deep:         oklch(8.5% 0.020 285);
+    --bg-surface:      oklch(10% 0.035 285 / 0.55);
+    --bg-elevated:     oklch(100% 0 0 / 0.06);
+    --bg-hover:        oklch(100% 0 0 / 0.09);
+    --bg-muted:        oklch(100% 0 0 / 0.04);
+    --bg-titlebar:     oklch(4.5% 0.030 285 / 0.97);
+    --bg-topbar:       oklch(5.5% 0.032 285 / 0.65);
+    --bg-sidebar:      oklch(5.5% 0.032 285 / 0.72);
+    --bg-select:       oklch(13% 0.045 285);
+
+    --text-1:    oklch(97% 0.012 285 / 0.93);
+    --text-2:    oklch(97% 0.012 285 / 0.60);
+    --text-3:    oklch(97% 0.012 285 / 0.38);
+    --text-4:    oklch(97% 0.012 285 / 0.18);
+    --text-body: oklch(97% 0.012 285 / 0.82);
+
+    --accent:          oklch(62% 0.210 285);
+    --accent-light:    oklch(74% 0.170 285);
+    --accent-surface:  oklch(62% 0.210 285 / 0.14);
+    --accent-border:   oklch(62% 0.210 285 / 0.28);
+
+    --border:       oklch(100% 0 0 / 0.07);
+    --border-light: oklch(100% 0 0 / 0.12);
+
+    --reddit:    oklch(59% 0.222 31);
+    --bluesky:   oklch(62% 0.183 257);
+    --tumblr:    oklch(52% 0.089 263);
+    --mastodon:  oklch(56% 0.214 279);
+    --twitter:   oklch(68% 0.122 251);
+
+    --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-full: 100px;
+    --titlebar-h: 36px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg-deep);
+    color: var(--text-1);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+
+  .preview-label {
+    color: var(--text-3);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* ── App shell ── */
+  .app {
+    width: 820px;
+    max-width: 100%;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    box-shadow: 0 32px 80px oklch(0% 0 0 / 0.55), 0 1px 0 oklch(100% 0 0 / 0.06) inset;
+  }
+
+  /* Titlebar */
+  .titlebar {
+    height: var(--titlebar-h);
+    background: var(--bg-titlebar);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .titlebar-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .titlebar-title { color: var(--text-3); font-size: 12px; flex: 1; text-align: center; }
+  .win-btn { width: 28px; height: 20px; border-radius: var(--r-sm); background: var(--bg-elevated); display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 10px; cursor: pointer; }
+
+  /* Topbar / nav */
+  .topbar {
+    background: var(--bg-topbar);
+    backdrop-filter: blur(12px);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-pill {
+    padding: 4px 14px;
+    border-radius: var(--r-full);
+    font-size: 12px;
+    color: var(--text-3);
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .nav-pill.active {
+    background: var(--accent-surface);
+    border-color: var(--accent-border);
+    color: var(--accent-light);
+  }
+  .nav-pill:not(.active):hover { background: var(--bg-hover); }
+
+  /* Main content */
+  .main {
+    display: flex;
+    background: var(--bg-deep);
+    min-height: 420px;
+  }
+
+  /* Viewer */
+  .viewer {
+    flex: 1;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--bg-surface);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 20px 22px;
+    box-shadow: 0 20px 60px oklch(0% 0 0 / 0.35);
+  }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .badge {
+    font-size: 10px;
+    padding: 2px 9px;
+    border-radius: var(--r-full);
+    font-weight: 500;
+  }
+  .badge-reddit { background: oklch(59% 0.222 31 / 0.18); color: oklch(74% 0.14 40); }
+  .badge-bluesky { background: oklch(62% 0.183 257 / 0.18); color: oklch(72% 0.12 254); }
+  .source { color: var(--text-3); font-size: 11px; }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--text-1);
+    margin-bottom: 10px;
+  }
+  .card-score { color: var(--text-3); font-size: 11px; }
+
+  /* Nav arrows */
+  .card-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .nav-arrow {
+    width: 36px; height: 36px;
+    border-radius: var(--r-full);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-2);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .card-counter { color: var(--text-3); font-size: 12px; }
+  .archive-btn {
+    padding: 7px 20px;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    color: oklch(97% 0.012 285 / 0.95);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* Second card (peek) */
+  .card-peek {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 16px 20px;
+    opacity: 0.55;
+  }
+  .badge-mastodon { background: oklch(56% 0.214 279 / 0.18); color: oklch(72% 0.12 275); }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px;
+    background: var(--bg-sidebar);
+    backdrop-filter: blur(12px);
+    border-left: 1px solid var(--border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .sidebar-label {
+    color: var(--text-4);
+    font-size: 9px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .sidebar-textarea {
+    width: 100%;
+    background: var(--accent-surface);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--r-md);
+    padding: 8px 10px;
+    color: var(--text-body);
+    font-size: 11px;
+    font-family: var(--font);
+    resize: none;
+    height: 64px;
+    outline: none;
+  }
+  .sidebar-textarea::placeholder { color: var(--text-3); font-style: italic; }
+
+  /* Palette token strip */
+  .token-strip {
+    margin-top: 20px;
+    width: 820px;
+    max-width: 100%;
+    display: flex;
+    gap: 0;
+    border-radius: var(--r-md);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    height: 28px;
+  }
+  .token-strip div { flex: 1; }
+
+  .caption {
+    margin-top: 10px;
+    color: var(--text-3);
+    font-size: 11px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<p class="preview-label">Purple Dusk — full UI preview</p>
+
+<div class="app">
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <div class="titlebar-dot"></div>
+    <div class="titlebar-title">Weekly Fetch</div>
+    <div class="win-btn">─</div>
+    <div class="win-btn">□</div>
+    <div class="win-btn">✕</div>
+  </div>
+
+  <!-- Topbar nav -->
+  <div class="topbar">
+    <div class="nav-pill active">Home</div>
+    <div class="nav-pill">Archive</div>
+    <div class="nav-pill">Sources</div>
+    <div class="nav-pill">Settings</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="viewer">
+      <!-- Primary card -->
+      <div class="card">
+        <div class="card-meta">
+          <span class="badge badge-reddit">reddit</span>
+          <span class="source">r/books</span>
+        </div>
+        <div class="card-title">"The best sci-fi novels of 2025, ranked and annotated by the community"</div>
+        <div class="card-score">▲ 4,291 points · 312 comments</div>
+      </div>
+
+      <!-- Nav row -->
+      <div class="card-nav">
+        <div class="nav-arrow">←</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="card-counter">3 of 14</span>
+          <button class="archive-btn">Archive ↵</button>
+        </div>
+        <div class="nav-arrow">→</div>
+      </div>
+
+      <!-- Peek card -->
+      <div class="card-peek">
+        <div class="card-meta">
+          <span class="badge badge-mastodon">mastodon</span>
+          <span class="source">@cabel@mastodon.social</span>
+        </div>
+        <div style="color:var(--text-2);font-size:13px;line-height:1.5;">Spent the morning reading about Byzantine fault tolerance. This stuff is wild…</div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div>
+        <div class="sidebar-label">Notes</div>
+        <textarea class="sidebar-textarea" placeholder="Add a note…"></textarea>
+      </div>
+      <div>
+        <div class="sidebar-label">Todos</div>
+        <textarea class="sidebar-textarea" placeholder="Add a todo…"></textarea>
+      </div>
+      <!-- Mini platform legend -->
+      <div style="margin-top:auto;">
+        <div class="sidebar-label" style="margin-bottom:8px;">Sources today</div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--reddit);"></div>
+            <span style="color:var(--text-2);font-size:11px;">reddit · 6 items</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--bluesky);"></div>
+            <span style="color:var(--text-2);font-size:11px;">bluesky · 5 items</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--mastodon);"></div>
+            <span style="color:var(--text-2);font-size:11px;">mastodon · 3 items</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Token strip -->
+<div class="token-strip">
+  <div style="background:oklch(8.5% 0.020 285);flex:2;" title="bg-deep"></div>
+  <div style="background:oklch(4.5% 0.030 285);flex:1;" title="bg-titlebar"></div>
+  <div style="background:oklch(5.5% 0.032 285 / 0.72);flex:1;" title="bg-sidebar"></div>
+  <div style="background:oklch(62% 0.210 285);flex:1;" title="accent"></div>
+  <div style="background:oklch(74% 0.170 285);flex:1;" title="accent-light"></div>
+  <div style="background:oklch(97% 0.012 285 / 0.93);flex:1;" title="text-1"></div>
+  <div style="background:oklch(97% 0.012 285 / 0.38);flex:1;" title="text-3"></div>
+  <div style="background:oklch(59% 0.222 31);flex:0.5;" title="reddit"></div>
+  <div style="background:oklch(62% 0.183 257);flex:0.5;" title="bluesky"></div>
+  <div style="background:oklch(56% 0.214 279);flex:0.5;" title="mastodon"></div>
+</div>
+<p class="caption">Token strip: bg-deep · bg-titlebar · bg-sidebar · accent · accent-light · text-1 · text-3 · platform colors</p>
+
+</body>
+</html>

@@ -4,33 +4,31 @@
  * Called by app.js with a flat array of pending artifacts.
  * The viewer is inline in #view-home (not an overlay).
  *
- * Keyboard shortcuts (active when viewer is showing):
+ * Card 0 is always a synthetic cover card (count, reading time, sources).
+ * Artifact cards start at index 1.
+ *
+ * Keyboard shortcuts:
  *   h / ←        previous card
  *   l / →        next card
- *   j / ↓        scroll card down
- *   k / ↑        scroll card up
- *   c            toggle comments section
+ *   j / ↓        scroll down
+ *   k / ↑        scroll up
+ *   c            toggle comments
  *   Ctrl+N       focus notes sidebar
- *   Enter        archive current & move to next
+ *   Enter        archive current & next (skips cover)
  *   Ctrl+Z       undo last action
  */
 
 // ── Undo stack (session-scoped, in-memory) ────────────────────────────────────
 var undoStack = [];
 
-function pushUndo(action) {
-  undoStack.push(action);
-}
+function pushUndo(action) { undoStack.push(action); }
 
 async function popUndo() {
   if (undoStack.length === 0) return false;
   var action = undoStack.pop();
-
   if (action.type === 'compound') {
-    // Reverse sub-actions in reverse order
-    for (var i = action.actions.length - 1; i >= 0; i--) {
+    for (var i = action.actions.length - 1; i >= 0; i--)
       await reverseAction(action.actions[i]);
-    }
   } else {
     await reverseAction(action);
   }
@@ -39,35 +37,31 @@ async function popUndo() {
 
 async function reverseAction(action) {
   if (action.type === 'archive') {
-    // Unarchive via API
     await fetch('/api/artifacts/' + action.artifactId + '/unarchive', { method: 'POST' });
-    // Re-insert into viewer
-    if (typeof window._reinsertArtifact === 'function') {
+    if (typeof window._reinsertArtifact === 'function')
       window._reinsertArtifact(action.artifactData, action.index);
-    }
   } else if (action.type === 'note_edit') {
     await fetch('/api/artifacts/' + action.artifactId + '/note', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: action.previousText }),
     });
-    if (typeof window._restoreNoteText === 'function') {
+    if (typeof window._restoreNoteText === 'function')
       window._restoreNoteText(action.artifactId, action.previousText);
-    }
   } else if (action.type === 'todo_edit') {
     await fetch('/api/artifacts/' + action.artifactId + '/todo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: action.previousText }),
     });
-    if (typeof window._restoreTodoText === 'function') {
+    if (typeof window._restoreTodoText === 'function')
       window._restoreTodoText(action.artifactId, action.previousText);
-    }
   }
 }
 
 // ── Main viewer init ──────────────────────────────────────────────────────────
-window.initDigestViewer = function (POSTS) {
+window.initDigestViewer = function (ARTIFACTS) {
+  // POSTS[0] = synthetic cover card; POSTS[1..] = real artifacts
+  var POSTS = [{ type: 'cover' }].concat(ARTIFACTS);
+
   let current = 0;
 
   // ── Source colour palettes ──────────────────────────
@@ -81,11 +75,13 @@ window.initDigestViewer = function (POSTS) {
     ['#ec4899', '#a855f7', '#f0abfc'],
     ['#0ea5e9', '#6366f1', '#38bdf8'],
   ];
+  const COVER_PALETTE = ['#2a1508', '#4a2010', '#c8703a'];
 
   const subPaletteMap = {};
-  let nextPaletteIdx  = 0;
+  let nextPaletteIdx = 0;
 
   function getPalette(post) {
+    if (post.type === 'cover') return COVER_PALETTE;
     if (!(post.source_name in subPaletteMap))
       subPaletteMap[post.source_name] = nextPaletteIdx++ % PALETTES.length;
     return PALETTES[subPaletteMap[post.source_name]];
@@ -110,25 +106,15 @@ window.initDigestViewer = function (POSTS) {
 
   function platformBadge(platform) {
     if (!platform || platform === 'reddit') return '';
-    const labels = { bluesky: 'bsky', tumblr: 'tumblr', instagram: 'ig', mastodon: 'masto', twitter: 'twitter' };
-    const label  = labels[platform] || platform;
-    return '<span class="platform-badge pb-' + platform + '">' + label + '</span>';
+    const labels = { bluesky: 'bsky', tumblr: 'tumblr', instagram: 'ig',
+                     mastodon: 'masto', twitter: 'twitter' };
+    return '<span class="platform-badge pb-' + platform + '">' +
+           (labels[platform] || platform) + '</span>';
   }
 
-  // ── Build source start-index map ──────────────────
-  const subStarts      = {};
-  const subPlatformMap = {};
-  POSTS.forEach((p, i) => {
-    if (!(p.source_name in subStarts)) {
-      subStarts[p.source_name]      = i;
-      subPlatformMap[p.source_name] = p.platform || 'reddit';
-    }
-  });
-
-  // ── Build tab bar ─────────────────────────────────
+  // ── Tab bar ───────────────────────────────────────
   const tabDefs = [];
   const tabsEl  = document.getElementById('tabs');
-  tabsEl.innerHTML = '';
 
   function makeTab(label, extraClass) {
     const btn = document.createElement('button');
@@ -142,33 +128,49 @@ window.initDigestViewer = function (POSTS) {
     tabsEl.innerHTML = '';
     tabDefs.length = 0;
 
-    // Rebuild source start indices
-    var newSubStarts = {};
-    var newSubPlatformMap = {};
-    POSTS.forEach((p, i) => {
-      if (!(p.source_name in newSubStarts)) {
-        newSubStarts[p.source_name] = i;
-        newSubPlatformMap[p.source_name] = p.platform || 'reddit';
+    // Cover tab — always index 0
+    var coverBtn = makeTab('\u2605 Overview', 'tab-special');
+    coverBtn.onclick = function () { navigateTo(0); };
+    tabDefs.push({ start: 0, end: 0, el: coverBtn });
+
+    // Source tabs — artifacts start at index 1
+    var subStarts = {}, subPlatformMap = {};
+    POSTS.slice(1).forEach(function (p, i) {
+      var realIdx = i + 1;
+      if (!(p.source_name in subStarts)) {
+        subStarts[p.source_name]      = realIdx;
+        subPlatformMap[p.source_name] = p.platform || 'reddit';
       }
     });
 
-    var subList = Object.keys(newSubStarts);
-    subList.forEach((sub, si) => {
-      var start    = newSubStarts[sub];
+    var subList = Object.keys(subStarts);
+    subList.forEach(function (sub, si) {
+      var start    = subStarts[sub];
       var end      = si + 1 < subList.length
-        ? newSubStarts[subList[si + 1]] - 1
+        ? subStarts[subList[si + 1]] - 1
         : POSTS.length - 1;
-      var platform = newSubPlatformMap[sub] || 'reddit';
+      var platform = subPlatformMap[sub] || 'reddit';
       var count    = end - start + 1;
       var btn      = makeTab(platformPrefix(platform) + sub + ' (' + count + ')');
-      btn.onclick  = () => navigateTo(start);
+      btn.onclick  = function () { navigateTo(start); };
       tabDefs.push({ start, end, el: btn });
     });
   }
 
   rebuildTabs();
 
-  // ── Bullet-point helpers ──────────────────────────
+  // ── Helpers ───────────────────────────────────────
+  function escAttr(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+      .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function decodeHtml(s) {
+    const t = document.createElement('textarea');
+    t.innerHTML = s; return t.value;
+  }
+  function scoreClass(n) {
+    return n >= 2000 ? 'score-high' : n >= 500 ? 'score-mid' : 'score-low';
+  }
   function bulletizeNote(text) {
     if (!text.trim()) return '';
     return text.split('\n').map(function (line) {
@@ -178,59 +180,73 @@ window.initDigestViewer = function (POSTS) {
     }).filter(Boolean).join('\n');
   }
 
-  // ── Helpers ───────────────────────────────────────
-  function escAttr(s) {
-    return String(s)
-      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-  function decodeHtml(s) {
-    const t = document.createElement('textarea');
-    t.innerHTML = s;
-    return t.value;
-  }
-  function scoreClass(n) {
-    return n >= 2000 ? 'score-high' : n >= 500 ? 'score-mid' : 'score-low';
+  // ── Cover card renderer ───────────────────────────
+  function renderCoverCard() {
+    var artifacts = POSTS.slice(1);
+    var count     = artifacts.length;
+
+    var words = artifacts.reduce(function (acc, p) {
+      var w = p.title ? p.title.split(/\s+/).length : 0;
+      if (p.content && p.content.text) w += p.content.text.split(/\s+/).length;
+      return acc + w;
+    }, 0);
+    var readMins = Math.max(1, Math.ceil(words / 200));
+
+    // Count artifacts per source
+    var sourceCounts = {}, sourcePlatforms = {};
+    artifacts.forEach(function (p) {
+      if (!sourceCounts[p.source_name]) {
+        sourceCounts[p.source_name]   = 0;
+        sourcePlatforms[p.source_name] = p.platform || 'reddit';
+      }
+      sourceCounts[p.source_name]++;
+    });
+
+    var sourcesHtml = Object.keys(sourceCounts).map(function (name) {
+      var platform = sourcePlatforms[name];
+      return '<div class="cover-source-row">' +
+        '<span class="platform-badge pb-' + platform + '">' + escAttr(platform) + '</span>' +
+        '<span class="cover-source-name">' + platformPrefix(platform) + escAttr(name) + '</span>' +
+        '<span class="cover-source-count">' + sourceCounts[name] + '</span>' +
+      '</div>';
+    }).join('');
+
+    document.getElementById('card').innerHTML =
+      '<div class="cover-card">' +
+        '<div class="cover-count">' + count +
+          ' artifact' + (count !== 1 ? 's' : '') + ' pending.' +
+        '</div>' +
+        '<div class="cover-readtime">Estimated reading time: ~' + readMins +
+          ' minute' + (readMins !== 1 ? 's' : '') + '.</div>' +
+        '<div class="cover-sources-label">Sources</div>' +
+        '<div class="cover-sources">' + sourcesHtml + '</div>' +
+        '<div class="cover-hint">Press <kbd>\u2192</kbd> or <kbd>l</kbd> to start reading</div>' +
+      '</div>';
   }
 
   // ── Comment thread renderer ───────────────────────
   function renderComments(comments) {
     if (!comments || comments.length === 0) return '';
-
     function renderThread(list) {
       return list.map(c => {
-        const body    = marked.parse(c.body || '');
-        const replies = c.replies && c.replies.length > 0
-          ? '<div class="comment-replies">' + renderThread(c.replies) + '</div>'
-          : '';
-        return (
-          '<div class="comment">' +
-            '<div class="comment-meta">' +
-              escAttr(c.author) + ' &nbsp;&middot;&nbsp; ' +
-              Number(c.score).toLocaleString() + ' pts' +
-            '</div>' +
-            '<div class="comment-body">' + body + '</div>' +
-            replies +
-          '</div>'
-        );
+        var body    = marked.parse(c.body || '');
+        var replies = c.replies && c.replies.length > 0
+          ? '<div class="comment-replies">' + renderThread(c.replies) + '</div>' : '';
+        return '<div class="comment">' +
+          '<div class="comment-meta">' + escAttr(c.author) + ' &nbsp;&middot;&nbsp; ' +
+            Number(c.score).toLocaleString() + ' pts</div>' +
+          '<div class="comment-body">' + body + '</div>' + replies + '</div>';
       }).join('');
     }
-
     return '<div class="comments-section">' + renderThread(comments) + '</div>';
   }
 
-  // ── Main render function ──────────────────────────
+  // ── Main render ───────────────────────────────────
   const sidebarEl    = document.getElementById('sidebar');
   const cardScrollEl = document.getElementById('card-scroll');
+  const commentsEl   = document.getElementById('card-comments');
 
   function renderCard(index) {
-    if (POSTS.length === 0) {
-      showEmpty();
-      return;
-    }
-    if (index < 0) index = 0;
-    if (index >= POSTS.length) index = POSTS.length - 1;
-
     const p = POSTS[index];
     current = index;
 
@@ -238,16 +254,32 @@ window.initDigestViewer = function (POSTS) {
       el.classList.toggle('active', index >= start && index <= end);
     });
 
-    document.getElementById('topbar-progress').textContent =
-      (index + 1) + ' / ' + POSTS.length;
-    document.getElementById('topbar').style.setProperty(
-      '--progress', ((index + 1) / POSTS.length * 100) + '%');
+    var artifactCount = POSTS.length - 1; // exclude cover
+    if (p.type === 'cover') {
+      document.getElementById('topbar-progress').textContent =
+        artifactCount + ' pending';
+      document.getElementById('topbar').style.setProperty('--progress', '0%');
+    } else {
+      var artifactIndex = index; // 1-based among artifacts
+      document.getElementById('topbar-progress').textContent =
+        artifactIndex + ' / ' + artifactCount;
+      document.getElementById('topbar').style.setProperty(
+        '--progress', (artifactIndex / artifactCount * 100) + '%');
+    }
 
     updateBg(getPalette(p));
 
-    sidebarEl.style.display = '';
+    if (p.type === 'cover') {
+      sidebarEl.style.display = 'none';
+      commentsEl.innerHTML = '';
+      commentsEl.style.display = 'none';
+      renderCoverCard();
+      cardScrollEl.scrollTop = 0;
+      return;
+    }
 
-    const commentsEl = document.getElementById('card-comments');
+    // ── Regular artifact card ─────────────────────
+    sidebarEl.style.display = '';
 
     let contentHtml = '';
     if (p.type === 'text' && p.content && p.content.text) {
@@ -259,28 +291,28 @@ window.initDigestViewer = function (POSTS) {
     } else if (p.type === 'link' && p.content && p.content.url) {
       let domain = p.content.url;
       try { domain = new URL(p.content.url).hostname; } catch (e) {}
-      contentHtml =
-        '<div class="ext-link"><a href="' + escAttr(p.content.url) +
+      contentHtml = '<div class="ext-link"><a href="' + escAttr(p.content.url) +
         '" target="_blank" rel="noopener">' + escAttr(domain) + '</a></div>';
     }
 
     const sc = scoreClass(p.score);
     document.getElementById('card').innerHTML =
       '<div class="card-title">' +
-        '<a href="' + escAttr(p.link) + '" target="_blank" rel="noopener">' + (p.title || '[Post]') + '</a>' +
+        '<a href="' + escAttr(p.link) + '" target="_blank" rel="noopener">' +
+          (p.title || '[Post]') + '</a>' +
         '<span class="score ' + sc + '">' + p.score.toLocaleString() + '</span>' +
         platformBadge(p.platform) +
-      '</div>' +
-      contentHtml;
+      '</div>' + contentHtml;
 
     if (p.type === 'text' && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
       MathJax.typesetPromise([document.getElementById('card')]).catch(console.error);
     }
 
-    const commentsHtml = renderComments(p.comments);
+    var commentsHtml = renderComments(p.comments);
     if (commentsHtml) {
       commentsEl.innerHTML =
-        '<button class="comments-toggle" onclick="this.parentElement.classList.toggle(\'comments-open\')">' +
+        '<button class="comments-toggle" ' +
+            'onclick="this.parentElement.classList.toggle(\'comments-open\')">' +
           'Top Comments (' + p.comments.length + ')' +
           '<span class="comments-chevron">&#9660;</span>' +
         '</button>' +
@@ -292,26 +324,21 @@ window.initDigestViewer = function (POSTS) {
       commentsEl.style.display = 'none';
     }
 
-    // Populate notes + todos sidebar
-    const notesEl     = document.getElementById('notes');
-    const todosEl     = document.getElementById('todos');
-    const notesTitEl  = document.getElementById('notes-post-title');
-    notesEl.value     = bulletizeNote(p.note || '');
-    todosEl.value     = p.todo || '';
-    notesTitEl.textContent = decodeHtml(p.title || '');
+    document.getElementById('notes').value     = bulletizeNote(p.note || '');
+    document.getElementById('todos').value     = p.todo || '';
+    document.getElementById('notes-post-title').textContent = decodeHtml(p.title || '');
 
     cardScrollEl.scrollTop = 0;
   }
 
   // ── Show empty state ──────────────────────────────
   function showEmpty() {
-    document.getElementById('viewer-container').style.display = 'none';
+    document.getElementById('viewer-app').style.display = 'none';
     document.getElementById('home-empty').style.display = 'flex';
   }
 
   // ── Navigation ────────────────────────────────────
   function navigateTo(index) {
-    if (POSTS.length === 0) { showEmpty(); return; }
     if (index < 0 || index >= POSTS.length || index === current) return;
     const cardEl = document.getElementById('card');
     const cls    = index > current ? 'anim-fwd' : 'anim-bwd';
@@ -326,70 +353,65 @@ window.initDigestViewer = function (POSTS) {
 
   // ── Archive current artifact ──────────────────────
   async function archiveCurrent() {
-    if (POSTS.length === 0) return;
-    var p = POSTS[current];
-    var removedIndex = current;
-
-    // Archive via API
-    await fetch('/api/artifacts/' + p.id + '/archive', { method: 'POST' });
-
-    // Push undo action
-    pushUndo({ type: 'archive', artifactId: p.id, artifactData: p, index: removedIndex });
-
-    // Remove from local array
-    POSTS.splice(current, 1);
-
-    if (POSTS.length === 0) {
-      rebuildTabs();
-      showEmpty();
-      showToastFromViewer('All pending artifacts archived');
+    // On cover card: Enter starts reading instead of archiving
+    if (POSTS[current].type === 'cover') {
+      navigateTo(1);
       return;
     }
 
-    // Rebuild tabs since counts changed
-    rebuildTabs();
+    var p            = POSTS[current];
+    var removedIndex = current;
 
-    // Stay at same index (next card slides in), or go to last if we were at end
+    await fetch('/api/artifacts/' + p.id + '/archive', { method: 'POST' });
+    pushUndo({ type: 'archive', artifactId: p.id, artifactData: p, index: removedIndex });
+
+    POSTS.splice(current, 1);
+
+    // Only cover card left — all done
+    if (POSTS.length <= 1) {
+      POSTS.splice(0, 1); // remove cover too
+      rebuildTabs();
+      showEmpty();
+      showToastFromViewer('All artifacts archived');
+      return;
+    }
+
+    rebuildTabs();
     if (current >= POSTS.length) current = POSTS.length - 1;
     renderCard(current);
   }
 
-  // ── Re-insert an artifact (for undo) ──────────────
+  // ── Re-insert for undo ────────────────────────────
   window._reinsertArtifact = function (data, originalIndex) {
-    // Re-insert at the original position (or end if out of bounds)
-    var idx = Math.min(originalIndex, POSTS.length);
+    // If cover was removed, restore it first
+    if (POSTS.length === 0) POSTS.push({ type: 'cover' });
+
+    var idx = Math.min(Math.max(originalIndex, 1), POSTS.length);
     POSTS.splice(idx, 0, data);
 
-    // Show viewer if it was hidden
-    document.getElementById('viewer-container').style.display = '';
+    document.getElementById('viewer-app').style.display = '';
     document.getElementById('home-empty').style.display = 'none';
-
     rebuildTabs();
     renderCard(idx);
     showToastFromViewer('Artifact restored');
   };
 
-  // ── Restore note/todo text (for undo) ─────────────
   window._restoreNoteText = function (artifactId, text) {
     var p = POSTS.find(x => x.id === artifactId);
     if (p) p.note = text;
-    if (POSTS[current] && POSTS[current].id === artifactId) {
+    if (POSTS[current] && POSTS[current].id === artifactId)
       document.getElementById('notes').value = bulletizeNote(text);
-    }
   };
 
   window._restoreTodoText = function (artifactId, text) {
     var p = POSTS.find(x => x.id === artifactId);
     if (p) p.todo = text;
-    if (POSTS[current] && POSTS[current].id === artifactId) {
+    if (POSTS[current] && POSTS[current].id === artifactId)
       document.getElementById('todos').value = text;
-    }
   };
 
-  // ── Smooth scroll for j/k keys ────────────────────
-  let _scrollTarget = 0;
-  let _scrollRaf    = null;
-
+  // ── Smooth scroll ─────────────────────────────────
+  let _scrollTarget = 0, _scrollRaf = null;
   function _smoothScroll(delta) {
     _scrollTarget += delta;
     if (_scrollRaf) return;
@@ -397,9 +419,7 @@ window.initDigestViewer = function (POSTS) {
       const s = _scrollTarget * 0.25;
       if (Math.abs(s) < 1) {
         cardScrollEl.scrollTop += _scrollTarget;
-        _scrollTarget = 0;
-        _scrollRaf = null;
-        return;
+        _scrollTarget = 0; _scrollRaf = null; return;
       }
       cardScrollEl.scrollTop += s;
       _scrollTarget -= s;
@@ -414,7 +434,6 @@ window.initDigestViewer = function (POSTS) {
 
     var inText = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
 
-    // Ctrl+Z → undo (works even in textarea)
     if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
       e.preventDefault();
       popUndo().then(function (undone) {
@@ -423,7 +442,6 @@ window.initDigestViewer = function (POSTS) {
       return;
     }
 
-    // Ctrl+N → focus notes sidebar (works even when typing)
     if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       const notesEl = document.getElementById('notes');
@@ -438,27 +456,15 @@ window.initDigestViewer = function (POSTS) {
 
     if (e.key === 'ArrowLeft'  || e.key === 'h') { e.preventDefault(); navigate(-1); return; }
     if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); navigate(1);  return; }
-
-    if (e.key === 'j' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      _smoothScroll(200);
-      return;
-    }
-    if (e.key === 'k' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      _smoothScroll(-200);
-      return;
-    }
+    if (e.key === 'j' || e.key === 'ArrowDown')  { e.preventDefault(); _smoothScroll(200); return; }
+    if (e.key === 'k' || e.key === 'ArrowUp')    { e.preventDefault(); _smoothScroll(-200); return; }
 
     if (e.key === 'c') {
-      const commentsEl = document.getElementById('card-comments');
-      if (commentsEl && commentsEl.style.display !== 'none') {
+      if (commentsEl && commentsEl.style.display !== 'none')
         commentsEl.classList.toggle('comments-open');
-      }
       return;
     }
 
-    // Enter → archive & next
     if (e.key === 'Enter') {
       e.preventDefault();
       archiveCurrent();
@@ -474,22 +480,17 @@ window.initDigestViewer = function (POSTS) {
   const copyBtn = document.getElementById('btn-copy-notes');
   if (copyBtn) {
     copyBtn.onclick = function () {
-      const noted = POSTS.filter(p => p.note && p.note.trim());
-      if (noted.length === 0) {
-        showToastFromViewer('No notes to copy', 'error');
-        return;
-      }
+      const noted = POSTS.slice(1).filter(p => p.note && p.note.trim());
+      if (noted.length === 0) { showToastFromViewer('No notes to copy', 'error'); return; }
       const lines = [];
       noted.forEach(p => {
         lines.push('## ' + (p.title || '[Post]'));
         lines.push(p.note);
         lines.push('');
       });
-      navigator.clipboard.writeText(lines.join('\n')).then(function () {
-        showToastFromViewer('Notes copied to clipboard');
-      }).catch(function () {
-        showToastFromViewer('Copy failed', 'error');
-      });
+      navigator.clipboard.writeText(lines.join('\n'))
+        .then(() => showToastFromViewer('Notes copied to clipboard'))
+        .catch(() => showToastFromViewer('Copy failed', 'error'));
     };
   }
 
@@ -498,18 +499,16 @@ window.initDigestViewer = function (POSTS) {
     else console.log(msg);
   }
 
-  // ── Notes — save to API on change, auto-archive ───
+  // ── Notes / Todos ─────────────────────────────────
   const notesTextarea = document.getElementById('notes');
   const todosTextarea = document.getElementById('todos');
 
-  let _notesSaveTimer = null;
-  let _todosSaveTimer = null;
+  let _notesSaveTimer = null, _todosSaveTimer = null;
 
   function saveNoteToApi(p, text) {
     if (!p || !p.id) return;
     fetch('/api/artifacts/' + p.id + '/note', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     }).catch(console.error);
   }
@@ -517,88 +516,67 @@ window.initDigestViewer = function (POSTS) {
   function saveTodoToApi(p, text) {
     if (!p || !p.id) return;
     fetch('/api/artifacts/' + p.id + '/todo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     }).catch(console.error);
   }
 
-  // Coalesce undo: if top of stack is same artifact+type, update previousText
   function pushTextUndo(type, artifactId, previousText) {
     var top = undoStack.length > 0 ? undoStack[undoStack.length - 1] : null;
-    if (top && top.type === type && top.artifactId === artifactId) {
-      // Coalesce — keep the original previousText, don't push a new entry
-      return;
-    }
-    pushUndo({ type: type, artifactId: artifactId, previousText: previousText });
+    if (top && top.type === type && top.artifactId === artifactId) return; // coalesce
+    pushUndo({ type, artifactId, previousText });
   }
 
   function _notesInput() {
     var p = POSTS[current];
-    if (!p) return;
+    if (!p || p.type === 'cover') return;
     var prevText = p.note || '';
-    var text = notesTextarea.value;
-    p.note = text;
-
+    p.note = notesTextarea.value;
     pushTextUndo('note_edit', p.id, prevText);
-
     clearTimeout(_notesSaveTimer);
     _notesSaveTimer = setTimeout(function () {
-      saveNoteToApi(p, text);
-      // Auto-archive when note becomes non-empty
-      if (text.trim() && p._status !== 'auto_archived') {
+      saveNoteToApi(p, notesTextarea.value);
+      if (notesTextarea.value.trim() && p._status !== 'auto_archived') {
         p._status = 'auto_archived';
-        autoArchive(p);
+        fetch('/api/artifacts/' + p.id + '/archive', { method: 'POST' }).catch(console.error);
       }
     }, 800);
   }
 
   function _todosInput() {
     var p = POSTS[current];
-    if (!p) return;
+    if (!p || p.type === 'cover') return;
     var prevText = p.todo || '';
-    var text = todosTextarea.value;
-    p.todo = text;
-
+    p.todo = todosTextarea.value;
     pushTextUndo('todo_edit', p.id, prevText);
-
     clearTimeout(_todosSaveTimer);
     _todosSaveTimer = setTimeout(function () {
-      saveTodoToApi(p, text);
-      // Auto-archive when todo becomes non-empty
-      if (text.trim() && p._status !== 'auto_archived') {
+      saveTodoToApi(p, todosTextarea.value);
+      if (todosTextarea.value.trim() && p._status !== 'auto_archived') {
         p._status = 'auto_archived';
-        autoArchive(p);
+        fetch('/api/artifacts/' + p.id + '/archive', { method: 'POST' }).catch(console.error);
       }
     }, 800);
   }
 
-  function autoArchive(p) {
-    // Silently archive via API (don't remove from viewer — user is still editing)
-    fetch('/api/artifacts/' + p.id + '/archive', { method: 'POST' }).catch(console.error);
-  }
-
   function _notesBlur() {
     var p = POSTS[current];
-    if (!p) return;
+    if (!p || p.type === 'cover') return;
     clearTimeout(_notesSaveTimer);
     saveNoteToApi(p, notesTextarea.value);
   }
 
   function _todosBlur() {
     var p = POSTS[current];
-    if (!p) return;
+    if (!p || p.type === 'cover') return;
     clearTimeout(_todosSaveTimer);
     saveTodoToApi(p, todosTextarea.value);
   }
 
-  // Auto bullet: Enter → "• " on next line (only in notes)
   function _notesKeydown(e) {
     if (e.key === 'Enter' && !e.ctrlKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      var ta    = e.target;
-      var start = ta.selectionStart;
+      e.preventDefault(); e.stopPropagation();
+      var ta = e.target, start = ta.selectionStart;
       ta.value = ta.value.substring(0, start) + '\n• ' + ta.value.substring(ta.selectionEnd);
       ta.selectionStart = ta.selectionEnd = start + 3;
       ta.dispatchEvent(new Event('input'));
@@ -606,13 +584,9 @@ window.initDigestViewer = function (POSTS) {
   }
 
   function _todosKeydown(e) {
-    // Prevent Enter from triggering archive when in textarea
-    if (e.key === 'Enter' && !e.ctrlKey) {
-      e.stopPropagation();
-    }
+    if (e.key === 'Enter' && !e.ctrlKey) e.stopPropagation();
   }
 
-  // Seed empty notes textarea with "• " on focus
   function _notesFocus(e) {
     if (!e.target.value.trim()) {
       e.target.value = '• ';
@@ -620,7 +594,6 @@ window.initDigestViewer = function (POSTS) {
     }
   }
 
-  // Remove any listeners from a previous initDigestViewer call before re-adding
   if (window._notesHandlers) {
     notesTextarea.removeEventListener('input',   window._notesHandlers.notesInput);
     notesTextarea.removeEventListener('blur',    window._notesHandlers.notesBlur);
@@ -633,8 +606,7 @@ window.initDigestViewer = function (POSTS) {
   window._notesHandlers = {
     notesInput: _notesInput, notesBlur: _notesBlur,
     notesKeydown: _notesKeydown, notesFocus: _notesFocus,
-    todosInput: _todosInput, todosBlur: _todosBlur,
-    todosKeydown: _todosKeydown,
+    todosInput: _todosInput, todosBlur: _todosBlur, todosKeydown: _todosKeydown,
   };
   notesTextarea.addEventListener('input',   _notesInput);
   notesTextarea.addEventListener('blur',    _notesBlur);
@@ -644,9 +616,5 @@ window.initDigestViewer = function (POSTS) {
   todosTextarea.addEventListener('blur',    _todosBlur);
   todosTextarea.addEventListener('keydown', _todosKeydown);
 
-  if (POSTS.length > 0) {
-    renderCard(0);
-  } else {
-    showEmpty();
-  }
+  renderCard(0); // always start at cover
 };

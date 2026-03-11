@@ -1,12 +1,19 @@
-first continue the prev session
-
----
-
 Cold start problem:
 
 ---
 
-Time spent on the app, and on each source is tracked. The user can see it on the Usage page. It also has statistics for the number of Todos or Notes taken per a Source's Artifacts.
+Have the original session have the P=process thing.
+
+When pressing Ctrl+N on the Notes section, the focus isn't shifted back to the cards (so a user can start browsing the artifacts normally again). Make it so that pressing Esc and Ctrl+N can escape from being focused in the notes section. Similar, Ctrl+T makes you focused on the Todo section, and to go back we can press Ctrl+T or press Esc.
+Be able to export notes more easily.
+
+Posts that start with an image, are shown only as an image; the content is gone.
+
+Check which files have gotten too large in the codebase, and refactor them.
+
+---
+
+Time spent on the app, and on each source is tracked. The user can see it on the Usage page. It also has statistics for the number of Todos or Notes taken per a Source's Artifacts. All this data is visualised in a new Usage page.
 
 When the app detects that the user has spent more than 20 minutes on the app and presses the enter or → or l key to go to the next page, a different page will open, which looks different from all the other Artifacts. It will read:
 "20-20-20" [larger than the usual post titles, title is in the middle]

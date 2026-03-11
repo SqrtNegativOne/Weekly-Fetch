@@ -141,14 +141,14 @@ async function loadPending() {
     return;
   }
 
-  var viewerEl = document.getElementById('viewer-container');
-  var emptyEl  = document.getElementById('home-empty');
+  var viewerAppEl = document.getElementById('viewer-app');
+  var emptyEl     = document.getElementById('home-empty');
 
   if (!artifacts || artifacts.length === 0) {
-    viewerEl.style.display = 'none';
+    viewerAppEl.style.display = 'none';
     emptyEl.style.display = 'flex';
   } else {
-    viewerEl.style.display = '';
+    viewerAppEl.style.display = '';
     emptyEl.style.display = 'none';
     window.initDigestViewer(artifacts);
   }
@@ -593,15 +593,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
-  // Run Now (in Settings panel)
+  // Run Now (in Settings panel) — navigate to Home so progress is visible
   document.getElementById('btn-run-now').onclick = async function () {
     var btn = document.getElementById('btn-run-now');
     var origText = btn.textContent;
-    btn.textContent = 'Running\u2026';
+    btn.textContent = 'Starting\u2026';
     btn.disabled = true;
     try {
       var res = await api('POST', '/api/run-now');
       showToast(res.msg || 'Fetch started');
+      // Go to Home so the user can watch the progress bar
+      showView('home');
+      // Show fetching panel immediately (don't wait for next poll tick)
+      var fetchingEl = document.getElementById('home-fetching');
+      if (fetchingEl) fetchingEl.style.display = 'flex';
+      // Hide viewer-app while fetching (blobs still show behind the panel)
+      var viewerAppEl = document.getElementById('viewer-app');
+      if (viewerAppEl) viewerAppEl.style.display = 'none';
+      document.getElementById('home-empty').style.display = 'none';
+      _fetchRunning = true;
       pollFetchStatus();
     } catch (e) {
       showToast(e.message, 'error');

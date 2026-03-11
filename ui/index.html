@@ -61,12 +61,8 @@
 
     <!-- Home view — the viewer IS the home page -->
     <div id="view-home" class="app-view active">
-      <!-- Empty state -->
-      <div id="home-empty" style="display:none">
-        <div class="home-empty-msg">Nothing pending for today!</div>
-      </div>
 
-      <!-- Fetching state -->
+      <!-- Fetching state (above viewer, shown during a fetch) -->
       <div id="home-fetching" class="fetch-progress-panel" style="display:none">
         <div class="fetch-progress">
           <div class="fetch-progress-title">Fetching new artifacts&hellip;</div>
@@ -78,15 +74,22 @@
         </div>
       </div>
 
-      <!-- Viewer (inline, not overlay) -->
-      <div id="viewer-container" style="display:none">
+      <!-- Viewer container — always rendered so blobs show in both states -->
+      <div id="viewer-container">
         <div id="bg">
           <div id="blob1" class="blob"></div>
           <div id="blob2" class="blob"></div>
           <div id="blob3" class="blob"></div>
         </div>
 
-        <div id="viewer-app">
+        <!-- Empty state — inside viewer so blobs show behind it -->
+        <div id="home-empty" style="display:none">
+          <div class="home-empty-card">
+            <div class="home-empty-msg">No artifacts scheduled for today!</div>
+          </div>
+        </div>
+
+        <div id="viewer-app" style="display:none">
           <div id="topbar">
             <div id="tabs"></div>
             <div id="topbar-right">
