@@ -170,7 +170,7 @@ These two lines use hardcoded `oklch` values with hue 278 that bypass the token 
 **Files:**
 - Modify: `ui/digest.css:960-969` (`#bottombar` rule block)
 
-The `#bottombar` element is inside `#app-body` in the DOM (`#app-body > #app-main > #view-home > #viewer-container > #viewer-app > #bottombar`). The CSS descendant selector `#app-body:hover #bottombar` is therefore valid — hovering anywhere in the app (card area, sidebar, nav) triggers the reveal.
+The `#bottombar` element is a direct child of `#viewer-app`, which is itself nested inside `#app-body` (`#app-body > #app-main > #view-home > #viewer-container > #viewer-app > #bottombar`). The CSS descendant selector `#app-body:hover #bottombar` is therefore valid — hovering anywhere in the app (card area, sidebar, nav) triggers the reveal.
 
 `max-height` is used instead of `height` because `height: auto` cannot be transitioned in CSS. We set a generous `max-height` cap (40px) that fits one line of keyboard hints at the current font size.
 
@@ -214,20 +214,24 @@ The `#bottombar` element is inside `#app-body` in the DOM (`#app-body > #app-mai
 
   Note: `padding` is set to `0 16px` (zero vertical) by default so the collapsed bar takes no space, and transitions to `6px 16px` on reveal.
 
-- [ ] **Step 2: Verify hidden state**
+- [ ] **Step 2: Verify hidden state — Home with pending artifacts**
 
-  Run: `python app.py` and navigate to the Home view.
+  Run: `python app.py` and navigate to the Home view (requires at least one pending artifact so `#viewer-app` is shown).
   Expected: The keyboard hint bar at the bottom of the viewer is **not visible** at rest.
 
 - [ ] **Step 3: Verify revealed state**
 
   Move the mouse over the app window (anywhere — card, sidebar, nav).
-  Expected: The keyboard hint bar smoothly slides up from the bottom edge, showing `h/l  j/k  c  Ctrl+N  Enter  Ctrl+Z` hints.
+  Expected: The keyboard hint bar smoothly slides up from the bottom edge, showing `h/l  j/k  c  Ctrl+N  Enter  Ctrl+Z` hints. Also check the blur on the bar still renders (the `backdrop-filter` and `overflow: hidden` combination can sometimes cancel blur in WebView2 — if the blur is gone, remove the `backdrop-filter` line from the `#bottombar` rule).
 
-- [ ] **Step 4: Verify other views unaffected**
+- [ ] **Step 4: Verify hidden in all other states**
 
-  Navigate to the Archive, Sources, and Settings pages.
-  Expected: No bottombar visible on those pages (it only exists inside `#viewer-app` which is only shown on Home view).
+  a. Navigate to the Archive, Sources, and Settings pages.
+     Expected: No bottombar visible (it only exists inside `#viewer-app`).
+
+  b. Return to Home view with **no** pending artifacts (empty state).
+     Expected: No bottombar visible — `#viewer-app` is hidden via `display:none`, so the `max-height` collapse is moot but the bar must still not appear.
+
   Close the app.
 
 - [ ] **Step 5: Commit Chunk 2**
