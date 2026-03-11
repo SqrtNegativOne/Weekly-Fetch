@@ -1,1 +1,7 @@
-Hard: Add support for twitter.
+Every post is a task.
+
+Q. What do we call each post? Ans. Artifact? Just post?
+
+Each artifact is a todo? An anki flashcard?
+You can either take notes on one or "discard"? it. after you do that, the artifact is "processed".
+Instead of seeing weekly reports or whatever, you either have pending artifacts, or you don't. The concept of generating reports etc. is deleted. Artifacts are simply fetched according to a schedule. You can see pending Artifacts, and processed artifacts with their notes are "archived".

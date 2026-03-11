@@ -310,6 +310,7 @@ var PLATFORM_CONFIG = {
   tumblr:    { listKey: 'blogs',      thresholdKey: 'min_notes', globalKey: 'min_notes', namePlaceholder: 'staff' },
   instagram: { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'natgeo' },
   mastodon:  { listKey: 'accounts',   thresholdKey: 'min_favorites', globalKey: 'min_favorites', namePlaceholder: 'username@mastodon.social' },
+  twitter:   { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'elonmusk' },
 };
 
 var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -547,21 +548,26 @@ async function loadSources() {
   var t  = data.tumblr    || {};
   var ig = data.instagram || {};
   var ms = data.mastodon  || {};
+  var tw = data.twitter   || {};
 
   document.getElementById('reddit-min-karma').value       = r.min_karma       ?? 100;
   document.getElementById('bluesky-min-likes').value      = b.min_likes       ?? 10;
   document.getElementById('tumblr-min-notes').value       = t.min_notes       ?? 5;
   document.getElementById('instagram-min-likes').value    = ig.min_likes      ?? 100;
   document.getElementById('mastodon-min-favorites').value = ms.min_favorites  ?? 10;
+  document.getElementById('twitter-min-likes').value      = tw.min_likes      ?? 50;
+  document.getElementById('twitter-rss-base').value       = tw.rss_base       ?? '';
 
   populateEntries('reddit',    r.subreddits);
   populateEntries('bluesky',   b.accounts);
   populateEntries('tumblr',    t.blogs);
   populateEntries('instagram', ig.accounts);
   populateEntries('mastodon',  ms.accounts);
+  populateEntries('twitter',   tw.accounts);
 
   _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
-                (t.blogs||[]).length + (ig.accounts||[]).length + (ms.accounts||[]).length > 0;
+                (t.blogs||[]).length + (ig.accounts||[]).length +
+                (ms.accounts||[]).length + (tw.accounts||[]).length > 0;
   updateHomeCta();
 }
 
@@ -586,6 +592,11 @@ async function saveSources() {
     mastodon: {
       min_favorites: parseInt(document.getElementById('mastodon-min-favorites').value) || 10,
       accounts:      collectEntries('mastodon'),
+    },
+    twitter: {
+      min_likes: parseInt(document.getElementById('twitter-min-likes').value) || 50,
+      rss_base:  document.getElementById('twitter-rss-base').value.trim(),
+      accounts:  collectEntries('twitter'),
     },
   };
 
@@ -737,8 +748,10 @@ document.addEventListener('DOMContentLoaded', function () {
     var t  = data.tumblr    || {};
     var ig = data.instagram || {};
     var ms = data.mastodon  || {};
+    var tw = data.twitter   || {};
     _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
-                  (t.blogs||[]).length + (ig.accounts||[]).length + (ms.accounts||[]).length > 0;
+                  (t.blogs||[]).length + (ig.accounts||[]).length +
+                  (ms.accounts||[]).length + (tw.accounts||[]).length > 0;
     updateHomeCta();
   }).catch(function () {});
 

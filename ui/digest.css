@@ -28,6 +28,7 @@
   --tumblr: #5d70b3;
   --instagram: #e1306c;
   --mastodon: #6364ff;
+  --twitter: #1da1f2;
 
   /* Status */
   --success: #10b981;
@@ -485,6 +486,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .form-section[data-platform="tumblr"]    { border-left-color: var(--tumblr); }
 .form-section[data-platform="instagram"] { border-left-color: var(--instagram); }
 .form-section[data-platform="mastodon"]  { border-left-color: var(--mastodon); }
+.form-section[data-platform="twitter"]  { border-left-color: var(--twitter); }
 
 /* Platform dot before section title */
 .form-section[data-platform] .form-section-title::before {
@@ -500,6 +502,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .form-section[data-platform="tumblr"]    .form-section-title::before { background: var(--tumblr); }
 .form-section[data-platform="instagram"] .form-section-title::before { background: var(--instagram); }
 .form-section[data-platform="mastodon"]  .form-section-title::before { background: var(--mastodon); }
+.form-section[data-platform="twitter"]  .form-section-title::before { background: var(--twitter); }
 
 .form-section-title {
   font-size: var(--text-xs);
@@ -1097,12 +1100,14 @@ button:focus:not(:focus-visible) { outline: none; }
 .pb-tumblr    { background: rgba(93,112,179,0.22); color: #93a8d9; }
 .pb-instagram { background: rgba(225,48,108,0.18); color: #f472b6; }
 .pb-mastodon  { background: rgba(99,100,255,0.18); color: #a5b4fc; }
+.pb-twitter   { background: rgba(29,161,242,0.18); color: #7dd3fc; }
 
 /* Platform-tinted cover chips */
 .chip-bluesky   { background: rgba(32,139,254,0.12); border-color: rgba(32,139,254,0.30); color: #93c5fd; }
 .chip-tumblr    { background: rgba(93,112,179,0.15); border-color: rgba(93,112,179,0.35); color: #a5b4d9; }
 .chip-instagram { background: rgba(225,48,108,0.12); border-color: rgba(225,48,108,0.30); color: #f9a8d4; }
 .chip-mastodon  { background: rgba(99,100,255,0.12); border-color: rgba(99,100,255,0.30); color: #c4b5fd; }
+.chip-twitter   { background: rgba(29,161,242,0.12); border-color: rgba(29,161,242,0.30); color: #bae6fd; }
 
 /* ── Rendered markdown (selftext) ─────────────────── */
 .selftext {

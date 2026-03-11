@@ -30,27 +30,38 @@ def _first_image(html_text: str) -> str:
     return extractor.url
 
 
-def fetch_tumblr(blog: str, progress=None, min_notes: int = 5, since: datetime | None = None) -> list[dict]:
-    """Fetch recent posts from a Tumblr blog via its public RSS feed.
+def fetch_twitter(handle: str, progress=None, min_likes: int = 50,
+                  since: datetime | None = None,
+                  rss_url: str = "") -> list[dict]:
+    """Fetch recent tweets from a Twitter/X account via an RSS feed.
 
-    Tumblr RSS doesn't include note counts, so `min_notes` is accepted for
-    interface consistency but only applied when note data happens to be
-    available (which is rare). The effective filter is the 7-day date window.
+    Uses a Nitter-compatible RSS endpoint.  The caller builds the full URL
+    from the configured ``rss_base`` template; this function just receives it.
+
+    ``min_likes`` is accepted for interface consistency but **not enforced**
+    — RSS feeds don't include like counts.  The effective filter is the
+    date window (``since`` or 7-day default).
     """
-    if progress is not None:
-        progress.set_description(f"{blog}: Tumblr RSS")
+    if not rss_url:
+        if progress is not None:
+            progress.update(1)
+        raise RuntimeError(
+            f"twitter/{handle}: no rss_base configured in accounts.json — "
+            "set it to a Nitter instance URL (e.g. https://nitter.privacydev.net)"
+        )
 
-    url  = f"https://{blog}.tumblr.com/rss"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
+    if progress is not None:
+        progress.set_description(f"@{handle}: Twitter RSS")
+
+    resp = requests.get(rss_url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
 
     if progress is not None:
         progress.update(1)
 
-    # feedparser parses RSS/Atom — pass the raw text so it uses our fetched content
     feed   = feedparser.parse(resp.text)
     cutoff = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
-    posts  = []
+    posts: list[dict] = []
 
     for entry in feed.entries:
         # ── Date filter ──────────────────────────────────────────────────────
@@ -58,14 +69,14 @@ def fetch_tumblr(blog: str, progress=None, min_notes: int = 5, since: datetime |
         if published:
             pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
             if pub_dt < cutoff:
-                continue  # stop here — RSS is chronological, no older posts follow
+                continue  # RSS is chronological — no older posts follow
 
         # ── Title ────────────────────────────────────────────────────────────
         title_raw = entry.get("title", "")
         title     = html_mod.escape(title_raw[:120] + ("…" if len(title_raw) > 120 else ""))
         link      = entry.get("link", "")
 
-        # ── Content: prefer full content over summary ─────────────────────────
+        # ── Content: prefer full content over summary ────────────────────────
         raw_html = ""
         if entry.get("content"):
             raw_html = entry["content"][0].get("value", "")
@@ -82,14 +93,14 @@ def fetch_tumblr(blog: str, progress=None, min_notes: int = 5, since: datetime |
             content      = {"url": link}
 
         posts.append({
-            "title":    title or "[Post]",
+            "title":    title or "[Tweet]",
             "link":     link,
-            "score":    0,   # RSS has no note-count field
+            "score":    0,   # RSS has no like-count field
             "type":     content_type,
             "content":  content,
             "comments": [],
-            "platform": "tumblr",
-            "author":   blog,
+            "platform": "twitter",
+            "author":   "@" + handle,
         })
 
         if len(posts) >= POST_LIMIT:

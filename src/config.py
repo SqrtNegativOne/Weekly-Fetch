@@ -134,4 +134,8 @@ def load_sources() -> list[Source]:
     sources += _parse_entries(
         m.get("accounts", []), "mastodon", int(m.get("min_favorites", 10)), "min_favorites")
 
+    tw = accounts.get("twitter", {})
+    sources += _parse_entries(
+        tw.get("accounts", []), "twitter", int(tw.get("min_likes", 50)), "min_likes")
+
     return sources

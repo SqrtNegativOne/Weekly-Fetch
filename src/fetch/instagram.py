@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from config import POST_LIMIT
 
 
-def fetch_instagram(username: str, progress=None, min_likes: int = 100) -> list[dict]:
+def fetch_instagram(username: str, progress=None, min_likes: int = 100, since: datetime | None = None) -> list[dict]:
     """Fetch recent public Instagram posts using instaloader.
 
     instaloader scrapes Instagram without an official API — no login needed
@@ -26,7 +26,7 @@ def fetch_instagram(username: str, progress=None, min_likes: int = 100) -> list[
     try:
         loader  = instaloader.Instaloader()
         profile = instaloader.Profile.from_username(loader.context, username)
-        cutoff  = datetime.now(timezone.utc) - timedelta(days=7)
+        cutoff  = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
         posts   = []
 
         for post in profile.get_posts():

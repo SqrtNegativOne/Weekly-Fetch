@@ -28,7 +28,7 @@ def _strip_html(html_text: str) -> str:
     return parser.get_text()
 
 
-def fetch_mastodon(handle: str, progress=None, min_favorites: int = 10) -> list[dict]:
+def fetch_mastodon(handle: str, progress=None, min_favorites: int = 10, since: datetime | None = None) -> list[dict]:
     """Fetch recent posts from a Mastodon account using the public API.
 
     Handle format: ``username@instance.social`` (no leading @).
@@ -84,7 +84,7 @@ def fetch_mastodon(handle: str, progress=None, min_favorites: int = 10) -> list[
     if progress is not None:
         progress.update(1)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
     posts: list[dict] = []
 
     for status in statuses:

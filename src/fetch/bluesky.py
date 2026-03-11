@@ -6,7 +6,7 @@ import requests
 from config import HEADERS, POST_LIMIT
 
 
-def fetch_bluesky(handle: str, progress=None, min_likes: int = 50) -> list[dict]:
+def fetch_bluesky(handle: str, progress=None, min_likes: int = 50, since: datetime | None = None) -> list[dict]:
     """Fetch recent posts from a Bluesky account via the public AT Protocol API.
 
     No login required — we hit public.api.bsky.app which is open to anyone.
@@ -25,7 +25,7 @@ def fetch_bluesky(handle: str, progress=None, min_likes: int = 50) -> list[dict]
     if progress is not None:
         progress.update(1)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
     posts  = []
 
     for item in data.get("feed", []):

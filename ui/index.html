@@ -167,6 +167,28 @@
           </div>
         </div>
 
+        <div class="form-section" data-platform="twitter">
+          <div class="form-section-title">Twitter / X</div>
+          <div class="form-group">
+            <label for="twitter-rss-base">
+              RSS base URL
+              <span class="label-hint">base URL of a Nitter instance — the app appends /{handle}/rss automatically</span>
+            </label>
+            <input type="text" id="twitter-rss-base" placeholder="https://nitter.privacydev.net">
+          </div>
+          <div class="form-group threshold-group">
+            <label for="twitter-min-likes">
+              Default min likes
+              <span class="label-hint">accepted for consistency, but RSS feeds can't enforce this</span>
+            </label>
+            <input type="number" id="twitter-min-likes" value="50" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="twitter-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('twitter')">+ Add account</button>
+          </div>
+        </div>
+
         <div class="form-actions">
           <button class="btn btn-primary" id="btn-save-sources">Save Sources</button>
         </div>
@@ -230,7 +252,7 @@
           <div class="form-section-title">What it does</div>
           <p class="about-desc">
             Weekly Fetch pulls your favourite subreddits, Bluesky accounts, Tumblr blogs,
-            Instagram profiles, and Mastodon accounts on a schedule you set, then presents
+            Instagram profiles, Mastodon accounts, and Twitter/X feeds on a schedule you set, then presents
             the best posts as a distraction-free flashcard digest — one card at a time, no infinite scroll.
           </p>
           <p class="about-desc">

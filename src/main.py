@@ -8,7 +8,7 @@ It fetches posts, saves to SQLite, and shows a toast notification.
 """
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ensure src/ is on sys.path so bare `import config` etc. work regardless
@@ -17,18 +17,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from tqdm import tqdm
 
-from config import BASE_DIR, POST_LIMIT, load_settings, load_sources
+from config import BASE_DIR, POST_LIMIT, load_accounts, load_settings, load_sources
 from db import init_db, save_posts
 from fetch.reddit import fetch_subreddit
 from fetch.bluesky import fetch_bluesky
 from fetch.instagram import fetch_instagram
 from fetch.mastodon import fetch_mastodon
 from fetch.tumblr import fetch_tumblr
+from fetch.twitter import fetch_twitter
 from log import logger
 from notify import notify_digest_ready
 from schedule import (
     current_day_tag, elapsed_time_filter, is_due, load_state, mark_fetched,
-    reddit_time_filter, save_state,
+    save_state,
 )
 
 _ERRORS_PATH = BASE_DIR / "fetch_errors.json"
@@ -76,6 +77,7 @@ def main(force: bool = False):
     now     = datetime.now()
     state   = load_state()
     sources = load_sources()
+    twitter_rss_base = load_accounts().get("twitter", {}).get("rss_base", "")
 
     # Write a lock file so the GUI can show a "generating" indicator.
     lock_path = BASE_DIR / "fetch.lock"
@@ -118,27 +120,45 @@ def main(force: bool = False):
                 _write_progress(total_sources, len(done_list),
                                 source_label, done_list)
 
+                # Compute the cutoff datetime from the last fetch so
+                # fetchers only return posts newer than that.
+                last_str = state.get(f"{source.platform}/{source.name}")
+                if last_str:
+                    since = datetime.fromisoformat(last_str)
+                    if since.tzinfo is None:
+                        since = since.replace(tzinfo=timezone.utc)
+                else:
+                    since = None
+
                 posts: list = []
                 try:
                     match source.platform:
                         case "reddit":
-                            tf = (elapsed_time_filter(state, source, now)
-                                  if force
-                                  else reddit_time_filter(source.schedule))
+                            tf = elapsed_time_filter(state, source, now)
                             posts = fetch_subreddit(source.name, tf, progress,
-                                                    min_karma=source.threshold)
+                                                    min_karma=source.threshold,
+                                                    since=since)
                         case "bluesky":
                             posts = fetch_bluesky(source.name, progress,
-                                                  min_likes=source.threshold)
+                                                  min_likes=source.threshold,
+                                                  since=since)
                         case "tumblr":
                             posts = fetch_tumblr(source.name, progress,
-                                                 min_notes=source.threshold)
+                                                 min_notes=source.threshold,
+                                                 since=since)
                         case "instagram":
                             posts = fetch_instagram(source.name, progress,
-                                                    min_likes=source.threshold)
+                                                    min_likes=source.threshold,
+                                                    since=since)
                         case "mastodon":
                             posts = fetch_mastodon(source.name, progress,
-                                                   min_favorites=source.threshold)
+                                                   min_favorites=source.threshold,
+                                                   since=since)
+                        case "twitter":
+                            rss_url = f"{twitter_rss_base}/{source.name}/rss" if twitter_rss_base else ""
+                            posts = fetch_twitter(source.name, progress,
+                                                  min_likes=source.threshold,
+                                                  since=since, rss_url=rss_url)
                         case _:
                             _append_error(errors,
                                 f"Unknown platform '{source.platform}' — skipped")

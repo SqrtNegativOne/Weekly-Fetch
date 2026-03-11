@@ -2,7 +2,7 @@
 
 ## What is this?
 
-Weekly Fetch is a Windows desktop app (pywebview + FastAPI) that fetches top posts from Reddit, Bluesky, Tumblr, Instagram, and Mastodon on a user-defined schedule, then presents them as a distraction-free flashcard digest.
+Weekly Fetch is a Windows desktop app (pywebview + FastAPI) that fetches top posts from Reddit, Bluesky, Tumblr, Instagram, Mastodon, and Twitter/X on a user-defined schedule, then presents them as a distraction-free flashcard digest.
 
 ## Architecture
 
@@ -25,6 +25,7 @@ src/
     tumblr.py     ← fetch_tumblr(name, progress, min_notes)
     instagram.py  ← fetch_instagram(name, progress, min_likes)
     mastodon.py   ← fetch_mastodon(name, progress, min_favorites)
+    twitter.py    ← fetch_twitter(handle, progress, min_likes, since, rss_url)
   main.py         ← Headless fetch orchestrator called by Task Scheduler.
                     Uses tqdm progress bar. Writes fetch.lock while running.
                     Writes fetch_progress.json for GUI progress display.
@@ -75,7 +76,7 @@ fetch_progress.json ← Written by main.py during fetch. Read by /api/fetch-stat
 ```python
 @dataclass
 class Source:
-    platform:  str   # "reddit" | "bluesky" | "tumblr" | "instagram" | "mastodon"
+    platform:  str   # "reddit" | "bluesky" | "tumblr" | "instagram" | "mastodon" | "twitter"
     name:      str   # subreddit, handle, blog, username, or "handle@instance"
     schedule:  dict  # e.g. {"every_weekday": "Saturday"}
     threshold: int   # min_karma / min_likes / min_notes / min_favorites
@@ -107,7 +108,8 @@ The UI (app.js) maps the first three types to: `weekday`, `ndays`, `monthday`.
   "bluesky":  { "min_likes":      50, "accounts":   [...] },
   "tumblr":   { "min_notes":       5, "blogs":      [...] },
   "instagram":{ "min_likes":     100, "accounts":   [...] },
-  "mastodon": { "min_favorites":  10, "accounts":   [...] }
+  "mastodon": { "min_favorites":  10, "accounts":   [...] },
+  "twitter":  { "min_likes":      50, "rss_base": "https://nitter.privacydev.net", "accounts": [...] }
 }
 ```
 
@@ -133,7 +135,7 @@ POST /api/run-now                → trigger a forced fetch (--force) in a backg
 - Surfaces: `--bg-deep`, `--bg-surface`, `--bg-elevated`, `--bg-hover`
 - Text: `--text-1` through `--text-4` (4 opacity levels)
 - Accent: `--accent` (#6366f1 indigo), `--accent-light`, `--accent-surface`
-- Platforms: `--reddit`, `--bluesky`, `--tumblr`, `--instagram`
+- Platforms: `--reddit`, `--bluesky`, `--tumblr`, `--instagram`, `--twitter`
 - Radius: `--r-sm` / `--r-md` / `--r-lg` / `--r-full`
 - Title bar height: `--titlebar-h: 36px`
 

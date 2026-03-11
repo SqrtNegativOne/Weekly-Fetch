@@ -1,5 +1,6 @@
 import html
 import time
+from datetime import datetime, timezone
 
 import requests
 
@@ -64,7 +65,7 @@ def fetch_comments(subreddit: str, post_id: str) -> list[dict]:
     return comments
 
 
-def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None, min_karma: int = MIN_KARMA) -> list[dict]:
+def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None, min_karma: int = MIN_KARMA, since: datetime | None = None) -> list[dict]:
     if progress is not None:
         progress.set_description(f"r/{subreddit}: fetching top posts")
 
@@ -83,6 +84,14 @@ def fetch_subreddit(subreddit: str, time_filter: str = "week", progress=None, mi
         post = child["data"]
         if post.get("score", 0) < min_karma:
             continue
+
+        # Skip posts older than the last fetch
+        if since is not None:
+            created_utc = post.get("created_utc", 0)
+            if created_utc:
+                created_dt = datetime.fromtimestamp(created_utc, tz=timezone.utc)
+                if created_dt < since:
+                    continue
 
         # title is HTML-escaped so it's safe to inject into innerHTML via JS
         title = html.escape(post.get("title", ""))
