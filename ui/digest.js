@@ -189,8 +189,8 @@ window.initDigestViewer = function (POSTS, weekTag) {
           ' &nbsp;&middot;&nbsp; ' + p.total_posts + ' posts' +
           ' &nbsp;&middot;&nbsp; ~' + readMins + ' min read</div>' +
         sectionsHtml +
-        '<details class="cover-hint">' +
-          '<summary>keyboard shortcuts</summary>' +
+        '<div class="cover-hint">' +
+          '<div class="cover-hint-label">keyboard shortcuts</div>' +
           '<div class="cover-hint-body">' +
             '<kbd>h</kbd> / <kbd>l</kbd> &nbsp; previous / next card<br>' +
             '<kbd>j</kbd> / <kbd>k</kbd> &nbsp; scroll down / up<br>' +
@@ -198,7 +198,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
             '<kbd>Ctrl+N</kbd> &nbsp; focus notes<br>' +
             '<kbd>Esc</kbd> &nbsp; back to home<br>' +
           '</div>' +
-        '</details>' +
+        '</div>' +
       '</div>';
   }
 
@@ -372,6 +372,29 @@ window.initDigestViewer = function (POSTS, weekTag) {
   function navigate(delta) { navigateTo(current + delta); }
   window.navigate = navigate;
 
+  // ── Smooth scroll for j/k keys ────────────────────
+  // Accumulates rapid key presses into a single smooth animation
+  // instead of starting a new 'smooth' scroll per keystroke.
+  let _scrollTarget = 0;
+  let _scrollRaf    = null;
+
+  function _smoothScroll(delta) {
+    _scrollTarget += delta;
+    if (_scrollRaf) return;  // animation already running
+    _scrollRaf = requestAnimationFrame(function step() {
+      const step = _scrollTarget * 0.25;   // ease: 25% of remaining distance per frame
+      if (Math.abs(step) < 1) {
+        cardScrollEl.scrollTop += _scrollTarget;
+        _scrollTarget = 0;
+        _scrollRaf = null;
+        return;
+      }
+      cardScrollEl.scrollTop += step;
+      _scrollTarget -= step;
+      _scrollRaf = requestAnimationFrame(step);
+    });
+  }
+
   // ── Keyboard shortcuts ────────────────────────────
   //
   // When focus is in a textarea/input we don't capture h/j/k/l/c.
@@ -397,12 +420,12 @@ window.initDigestViewer = function (POSTS, weekTag) {
 
     if (e.key === 'j' || e.key === 'ArrowDown') {
       e.preventDefault();
-      cardScrollEl.scrollBy({ top: 120, behavior: 'smooth' });
+      _smoothScroll(200);
       return;
     }
     if (e.key === 'k' || e.key === 'ArrowUp') {
       e.preventDefault();
-      cardScrollEl.scrollBy({ top: -120, behavior: 'smooth' });
+      _smoothScroll(-200);
       return;
     }
 

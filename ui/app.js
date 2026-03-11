@@ -14,22 +14,29 @@
 // ── Home CTA state ────────────────────────────────────────────────────────────
 
 var _hasSources  = false;
+var _hasReports  = false;
 var _fetchRunning = false;
 
 function updateHomeCta() {
   var noSrc    = document.getElementById('home-no-sources');
   var hasSrc   = document.getElementById('home-has-sources');
+  var readyCta = document.getElementById('home-ready');
   var fetching = document.getElementById('home-fetching');
-  noSrc.style.display    = 'none';
-  hasSrc.style.display   = 'none';
-  fetching.style.display = 'none';
-  if (_fetchRunning) {
-    fetching.style.display = 'flex';
+
+  // CTA area: three states based on sources + reports
+  noSrc.style.display  = 'none';
+  hasSrc.style.display = 'none';
+  readyCta.style.display = 'none';
+  if (_hasReports) {
+    readyCta.style.display = 'flex';
   } else if (_hasSources) {
     hasSrc.style.display = 'flex';
   } else {
     noSrc.style.display = 'flex';
   }
+
+  // Progress panel: visible whenever a fetch is running, overlays the bottom
+  fetching.style.display = _fetchRunning ? 'flex' : 'none';
 }
 
 async function pollFetchStatus() {
@@ -37,14 +44,63 @@ async function pollFetchStatus() {
   try {
     var res = await api('GET', '/api/fetch-status');
     _fetchRunning = res.running;
+    updateFetchProgress(res.progress || null);
   } catch (e) {
     _fetchRunning = false;
+    updateFetchProgress(null);
   }
-  // Report just finished — refresh the list so the new entry appears
+  // Fetch just finished — refresh the report list and surface any errors
   if (wasRunning && !_fetchRunning) {
     loadReports();
+    showFetchErrors();
   }
   updateHomeCta();
+}
+
+function updateFetchProgress(progress) {
+  var bar    = document.getElementById('fetch-progress-bar');
+  var status = document.getElementById('fetch-progress-status');
+  var list   = document.getElementById('fetch-progress-list');
+  if (!bar || !status || !list) return;
+
+  if (!progress) {
+    bar.style.width = '0%';
+    status.textContent = 'Starting\u2026';
+    list.innerHTML = '';
+    return;
+  }
+
+  var pct = progress.total > 0
+    ? Math.round((progress.done / progress.total) * 100)
+    : 0;
+  bar.style.width = pct + '%';
+
+  if (progress.current) {
+    status.textContent = 'Fetching ' + progress.current +
+      '  (' + progress.done + '/' + progress.total + ')';
+  } else if (progress.done >= progress.total && progress.total > 0) {
+    status.textContent = 'Saving\u2026';
+  } else {
+    status.textContent = 'Starting\u2026';
+  }
+
+  var html = '';
+  (progress.done_list || []).forEach(function (src) {
+    html += '<div class="fetch-done-item">\u2713 ' +
+      src.replace(/</g, '&lt;') + '</div>';
+  });
+  list.innerHTML = html;
+}
+
+async function showFetchErrors() {
+  try {
+    var errors = await api('GET', '/api/fetch-errors');
+    errors.forEach(function (msg) {
+      showToast(msg, 'error');
+    });
+  } catch (e) {
+    // If the endpoint itself fails, silently ignore — it's not critical
+  }
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -100,17 +156,18 @@ function showView(name) {
 // ── Report list ───────────────────────────────────────────────────────────────
 
 function formatTag(tag) {
-  // Date-based tags: "2026-03-10" → { label: "Mar 10", year: "2026" }
+  // Date-based tags: "2026-03-10" → { day: "10", month: "March", year: "2026" }
   var m = tag.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
-    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
     var month = months[parseInt(m[2], 10) - 1] || m[2];
-    return { label: month + ' ' + parseInt(m[3], 10), year: m[1] };
+    return { day: String(parseInt(m[3], 10)), month: month, year: m[1] };
   }
-  // Legacy week tags: "2026-W10" → { label: "Week 10", year: "2026" }
+  // Legacy week tags: "2026-W10" → { day: "W10", month: "", year: "2026" }
   var w = tag.match(/^(\d{4})-W(\d+)$/);
-  if (w) return { label: 'Week ' + parseInt(w[2]), year: w[1] };
-  return { label: tag, year: '' };
+  if (w) return { day: 'W' + parseInt(w[2]), month: '', year: w[1] };
+  return { day: tag, month: '', year: '' };
 }
 
 async function loadReports() {
@@ -126,10 +183,14 @@ async function loadReports() {
   var emptyEl = document.getElementById('report-list-empty');
 
   if (!tags || tags.length === 0) {
+    _hasReports = false;
+    updateHomeCta();
     emptyEl.style.display = '';
     return;
   }
 
+  _hasReports = true;
+  updateHomeCta();
   emptyEl.style.display = 'none';
 
   tags.forEach(function (tag) {
@@ -141,7 +202,8 @@ async function loadReports() {
     var info = formatTag(tag);
     if (info.year) {
       btn.innerHTML =
-        '<span class="report-week">' + info.label + '</span>' +
+        '<span class="report-day">' + info.day + '</span>' +
+        '<span class="report-month">' + info.month + '</span>' +
         '<span class="report-year">' + info.year + '</span>';
     } else {
       btn.textContent = tag;
@@ -564,19 +626,19 @@ function getSettingsFromForm() {
 
 async function generateReport() {
   var btn = document.getElementById('btn-generate');
-  var orig = btn.textContent;
-  btn.textContent = 'Fetching\u2026';
+  var label = btn.querySelector('.nav-label');
+  var orig = label.textContent;
+  label.textContent = 'Fetching\u2026';
   btn.disabled = true;
   try {
     var res = await api('POST', '/api/run-now');
     showToast(res.msg || 'Fetch started');
-    // Refresh report list after a delay (fetching takes time)
-    setTimeout(loadReports, 15000);
-    setTimeout(loadReports, 45000);
+    // Polling will auto-refresh reports when the fetch finishes
+    pollFetchStatus();
   } catch (e) {
     showToast(e.message, 'error');
   } finally {
-    btn.textContent = orig;
+    label.textContent = orig;
     btn.disabled = false;
   }
 }
@@ -640,7 +702,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       var res = await api('POST', '/api/run-now');
       showToast(res.msg || 'Fetch started');
-      setTimeout(loadReports, 30000);
+      pollFetchStatus();
     } catch (e) {
       showToast(e.message, 'error');
     } finally {
@@ -654,14 +716,16 @@ document.addEventListener('DOMContentLoaded', function () {
     showView('sources');
     loadSources();
   });
-  document.getElementById('home-has-sources').addEventListener('click', function () {
+  // "Generate your first report" CTA — trigger a fetch
+  document.getElementById('home-has-sources').addEventListener('click', generateReport);
+  // "See today's Report" CTA — open the latest report
+  document.getElementById('home-ready').addEventListener('click', function () {
     var first = document.querySelector('.report-item');
-    if (first) {
-      first.click();
-    } else {
-      showToast('No reports yet — click Generate Report to fetch now');
-    }
+    if (first) first.click();
   });
+
+  // Activate home view + highlight nav button on startup
+  showView('home');
 
   // Initial data load
   loadReports();
@@ -678,7 +742,27 @@ document.addEventListener('DOMContentLoaded', function () {
     updateHomeCta();
   }).catch(function () {});
 
-  // Poll for in-progress fetch (Task Scheduler may fire before GUI opens)
+  // Poll for in-progress fetch (Task Scheduler may fire before GUI opens).
+  // Poll faster (2s) while a fetch is running, slower (5s) when idle.
   pollFetchStatus();
-  setInterval(pollFetchStatus, 5000);
+  var _pollTimer = setInterval(pollFetchStatus, 5000);
+
+  var _fastPolling = false;
+  function adjustPollRate() {
+    if (_fetchRunning && !_fastPolling) {
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(pollFetchStatus, 2000);
+      _fastPolling = true;
+    } else if (!_fetchRunning && _fastPolling) {
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(pollFetchStatus, 5000);
+      _fastPolling = false;
+    }
+  }
+  // Hook into the existing poll cycle
+  var _origPoll = pollFetchStatus;
+  pollFetchStatus = async function () {
+    await _origPoll();
+    adjustPollRate();
+  };
 });

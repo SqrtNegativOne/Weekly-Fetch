@@ -9,11 +9,14 @@ Weekly Fetch is a Windows desktop app (pywebview + FastAPI) that fetches top pos
 ```
 app.py            ← Entry point. Starts uvicorn in a thread, opens pywebview.
                     app.py --fetch  → headless mode used by Task Scheduler.
+                    app.py --fetch --force → manual mode (skip schedule checks).
 WeeklyFetch.spec  ← PyInstaller build spec → dist/WeeklyFetch/WeeklyFetch.exe
 src/
   server.py       ← FastAPI app (create_app). API routes + static file serving.
   db.py           ← SQLite helpers. Database: digests.db.
   notify.py       ← winotify Windows toast notifications.
+  log.py          ← Central loguru config. Import `logger` from here.
+                    Sinks: weekly_fetch.log (file) + stderr (dev).
   config.py       ← BASE_DIR, BUNDLE_DIR, POST_LIMIT, Source dataclass,
                     load_settings(), save_settings(), load_sources().
   fetch/          ← Per-platform fetcher subpackage:
@@ -24,8 +27,12 @@ src/
     mastodon.py   ← fetch_mastodon(name, progress, min_favorites)
   main.py         ← Headless fetch orchestrator called by Task Scheduler.
                     Uses tqdm progress bar. Writes fetch.lock while running.
+                    Writes fetch_progress.json for GUI progress display.
+                    Writes per-source errors to fetch_errors.json.
+                    --force flag: skip is_due() checks, fetch all sources.
   schedule.py     ← is_due(), current_day_tag(), load_state(), save_state(),
-                    mark_fetched(), reddit_time_filter(), schedule_label().
+                    mark_fetched(), reddit_time_filter(), elapsed_time_filter(),
+                    schedule_label().
 ui/               ← Single-page web frontend served by FastAPI at /static/*.
   index.html      ← App shell: custom titlebar, sidebar, views, viewer overlay.
   app.js          ← SPA routing, Sources/Settings forms, report list.
@@ -36,6 +43,8 @@ accounts.json     ← Platform source lists with per-entry schedule + threshold.
 last_fetch.json   ← State: maps "platform/name" → ISO datetime of last fetch.
 data/digests.db   ← SQLite (reports + notes).
 fetch.lock        ← Temporary lock file present while a fetch is running.
+fetch_progress.json ← Written by main.py during fetch. Read by /api/fetch-status.
+                    Contains {total, done, current, done_list} for GUI progress.
 .github/workflows/release.yml ← Builds .exe on v* tag push.
 ```
 
@@ -52,6 +61,12 @@ fetch.lock        ← Temporary lock file present while a fetch is running.
 - **Task Scheduler task name:** `WeeklyFetchDigest`
 - **fetch.lock:** created by `main.py` at start, deleted on finish. Used by
   `/api/fetch-status` to show a "generating" indicator in the UI.
+- **fetch_errors.json:** written by `main.py` when per-source errors occur.
+  Read + deleted by `GET /api/fetch-errors`. GUI polls this when the lock
+  disappears and shows each error as an in-app error toast.
+- **weekly_fetch.log:** loguru log file in BASE_DIR. Rotates at 5 MB, 3 files kept.
+  Import `logger` from `src/log.py` in any Python module. Do NOT use `print()`
+  for errors — use `logger.error(...)`.
 - **POST_LIMIT = 20** — max posts fetched per Reddit source.
 - **`start_fullscreen`** — boolean setting; if true, window opens maximized.
 
@@ -108,8 +123,9 @@ GET/POST /api/settings           → read/write settings.json
 
 POST /api/install-task           → register Windows scheduled task
 POST /api/remove-task            → delete scheduled task
-GET  /api/fetch-status           → { "running": bool } (based on fetch.lock)
-POST /api/run-now                → trigger a fetch in a background thread
+GET  /api/fetch-status           → { "running": bool, "progress": {...} }
+GET  /api/fetch-errors           → list of error strings from last run (then clears file)
+POST /api/run-now                → trigger a forced fetch (--force) in a background thread
 ```
 
 ## UI design tokens (digest.css)
@@ -137,5 +153,6 @@ GitHub Actions builds on `v*` tag push and creates a release with a zip.
 python -m ensurepip          # if venv has no pip
 pip install -r requirements.txt
 python app.py                # opens the pywebview window
-python app.py --fetch        # headless fetch (no window)
+python app.py --fetch        # headless scheduled fetch (respects is_due)
+python app.py --fetch --force  # headless forced fetch (all sources)
 ```

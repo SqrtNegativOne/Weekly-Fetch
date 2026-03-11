@@ -39,6 +39,7 @@ if str(_SRC) not in sys.path:
 
 from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
 from db import get_digest, init_db, list_tags, save_note
+from log import logger
 
 _UI = BUNDLE_DIR / "ui"
 
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/accounts")
     async def post_accounts(request: Request) -> dict:
+        logger.info("User saved sources")
         body = await request.json()
         ACCOUNTS_PATH.write_text(
             json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -106,6 +108,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/settings")
     async def post_settings(request: Request) -> dict:
+        logger.info("User saved settings")
         body = await request.json()
         save_settings(body)
         return {"ok": True}
@@ -117,6 +120,7 @@ def create_app() -> FastAPI:
     @app.post("/api/install-task")
     async def install_task(request: Request) -> dict:
         """Save settings (if a body is provided) then re-register the task."""
+        logger.info("User clicked Install Task")
         body = await request.json()
         if body:
             save_settings(body)
@@ -145,6 +149,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/remove-task")
     def remove_task() -> dict:
+        logger.info("User clicked Remove Task")
         result = subprocess.run(
             ["schtasks", "/Delete", "/TN", "WeeklyFetchDigest", "/F"],
             capture_output=True, text=True,
@@ -155,17 +160,51 @@ def create_app() -> FastAPI:
 
     @app.get("/api/fetch-status")
     def fetch_status() -> dict:
-        """Return whether a fetch is currently running (lock file present)."""
-        return {"running": (BASE_DIR / "fetch.lock").exists()}
+        """Return whether a fetch is currently running, plus progress info."""
+        running = (BASE_DIR / "fetch.lock").exists()
+        result: dict = {"running": running}
+        if running:
+            progress_path = BASE_DIR / "fetch_progress.json"
+            if progress_path.exists():
+                try:
+                    result["progress"] = json.loads(
+                        progress_path.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+        return result
+
+    @app.get("/api/fetch-errors")
+    def fetch_errors() -> list:
+        """Return any errors from the last fetch run, then clear them.
+
+        main.py writes errors to fetch_errors.json while it runs.
+        This endpoint reads that file and deletes it so each error is
+        shown to the user exactly once.
+        """
+        errors_path = BASE_DIR / "fetch_errors.json"
+        if not errors_path.exists():
+            return []
+        try:
+            errors = json.loads(errors_path.read_text(encoding="utf-8"))
+            errors_path.unlink(missing_ok=True)
+            if errors:
+                logger.info("Delivered {} fetch error(s) to UI", len(errors))
+            return errors
+        except Exception as exc:
+            logger.error("Could not read fetch_errors.json: {}", exc)
+            return []
 
     @app.post("/api/run-now")
     def run_now() -> dict:
-        """Kick off a fetch in a daemon thread so the API responds immediately."""
+        """Kick off a forced fetch in a daemon thread so the API responds immediately."""
+        logger.info("User clicked Run Now / Generate Report")
+
         def _worker():
             if _frozen:
-                subprocess.run([sys.executable, "--fetch"], cwd=str(BASE_DIR))
+                subprocess.run([sys.executable, "--fetch", "--force"],
+                               cwd=str(BASE_DIR))
             else:
-                subprocess.run([sys.executable, str(_SRC / "main.py")],
+                subprocess.run([sys.executable, str(_SRC / "main.py"), "--force"],
                                cwd=str(BASE_DIR))
 
         threading.Thread(target=_worker, daemon=True).start()

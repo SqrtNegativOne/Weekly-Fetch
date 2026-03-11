@@ -34,6 +34,10 @@
       <div id="report-list-empty">No reports yet.<br>Run a fetch to get started.</div>
     </div>
     <div id="nav-bottom">
+      <button class="nav-btn" data-view="home">
+        <span class="nav-icon">&#x2302;</span>
+        <span class="nav-label">Home</span>
+      </button>
       <button class="nav-btn" id="btn-generate" title="Fetch sources and generate today's report">
         <span class="nav-icon">&#x21BA;</span>
         <span class="nav-label">Generate Report</span>
@@ -56,19 +60,30 @@
   <!-- ── Main content area ─────────────────────────────────────────── -->
   <div id="app-main">
 
-    <!-- Home view — state-driven CTA -->
+    <!-- Home view — state-driven CTA + progress panel -->
     <div id="view-home" class="app-view active">
       <!-- No sources configured yet -->
       <div id="home-no-sources" class="home-cta" style="display:none">
         <div class="home-cta-label">Add sources</div>
       </div>
-      <!-- Sources exist, reports available -->
+      <!-- Sources exist but no reports yet -->
       <div id="home-has-sources" class="home-cta" style="display:none">
+        <div class="home-cta-label">Generate your first report</div>
+      </div>
+      <!-- Reports exist -->
+      <div id="home-ready" class="home-cta" style="display:none">
         <div class="home-cta-label">See today's Report</div>
       </div>
-      <!-- A fetch is in progress -->
-      <div id="home-fetching" class="home-cta home-cta-fetching" style="display:none">
-        <div class="home-cta-label">Generating report&hellip;</div>
+      <!-- A fetch is in progress (shown alongside the CTA, not replacing it) -->
+      <div id="home-fetching" class="fetch-progress-panel" style="display:none">
+        <div class="fetch-progress">
+          <div class="fetch-progress-title">Generating report&hellip;</div>
+          <div class="fetch-progress-bar-wrap">
+            <div class="fetch-progress-bar" id="fetch-progress-bar"></div>
+          </div>
+          <div class="fetch-progress-status" id="fetch-progress-status"></div>
+          <div class="fetch-progress-list" id="fetch-progress-list"></div>
+        </div>
       </div>
     </div>
 

@@ -170,7 +170,8 @@ if __name__ == "__main__":
     if "--fetch" in sys.argv:
         # Headless fetch mode — used by Task Scheduler when running
         # the frozen .exe, e.g.: WeeklyFetch.exe --fetch
+        # Optional --force flag skips schedule checks (used by Run Now).
         from main import main as fetch_main
-        fetch_main()
+        fetch_main(force="--force" in sys.argv)
     else:
         main()

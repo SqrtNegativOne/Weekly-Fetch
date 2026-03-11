@@ -86,6 +86,22 @@ def is_due(source: Source, state: dict, now: datetime) -> bool:
 # Reddit's API accepts time=day|week|month|year|all. We pick the one that best
 # matches the source's fetch cadence so you get fresh top posts each run.
 
+def elapsed_time_filter(state: dict, source: "Source", now: datetime) -> str:
+    """Pick a Reddit time filter based on actual days since the last fetch.
+
+    Used by --force (manual) runs so the filter matches reality rather than
+    the configured schedule cadence.
+    """
+    last_str = state.get(_key(source))
+    if last_str is None:
+        return "month"                  # never fetched → cast a wide net
+    days = (now - datetime.fromisoformat(last_str)).days
+    if days <= 1:   return "day"
+    if days <= 7:   return "week"
+    if days <= 31:  return "month"
+    return "year"
+
+
 def reddit_time_filter(schedule: dict) -> str:
     if "every_n_days" in schedule:
         n = schedule["every_n_days"]
