@@ -42,9 +42,9 @@ HEADERS = {"User-Agent": "weekly-fetch/1.0"}
 MIN_KARMA = 100
 
 _DEFAULT_SETTINGS = {
-    "data_dir":      "data",
-    "schedule_day":  "Saturday",
-    "schedule_time": "09:00",
+    "data_dir":        "data",
+    "schedule_time":   "09:00",
+    "start_fullscreen": True,
 }
 
 
@@ -71,7 +71,7 @@ def save_settings(data: dict) -> None:
 
 @dataclass
 class Source:
-    platform:  str   # "reddit" | "bluesky" | "tumblr" | "instagram"
+    platform:  str   # "reddit" | "bluesky" | "tumblr" | "instagram" | "mastodon"
     name:      str   # subreddit name, handle, blog, username
     schedule:  dict  # e.g. {"every_weekday": "Saturday"} — see schedule.py
     threshold: int   # min_karma / min_likes / min_notes
@@ -129,5 +129,9 @@ def load_sources() -> list[Source]:
     i = accounts.get("instagram", {})
     sources += _parse_entries(
         i.get("accounts", []), "instagram", int(i.get("min_likes", 100)), "min_likes")
+
+    m = accounts.get("mastodon", {})
+    sources += _parse_entries(
+        m.get("accounts", []), "mastodon", int(m.get("min_favorites", 10)), "min_favorites")
 
     return sources

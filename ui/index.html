@@ -11,136 +11,249 @@
 <!-- Toast notifications -->
 <div id="toast-container" role="status" aria-live="polite"></div>
 
-<!-- ── Left app nav sidebar ──────────────────────────────────────── -->
-<div id="app-nav">
-  <div id="app-brand">
-    <span class="brand-icon">&#x2299;</span>
-    <span class="brand-text">Weekly Fetch</span>
+<!-- ── Custom title bar (frameless window drag region) ───────────────── -->
+<div id="titlebar">
+  <div id="titlebar-drag">
+    <img src="/static/logo.svg" class="tb-icon" style="height:16px;width:16px;display:inline-block;vertical-align:middle;">
+    <span class="tb-title">Weekly Fetch</span>
   </div>
-  <div id="nav-section-label">Reports</div>
-  <div id="report-list">
-    <div id="report-list-empty">No reports yet.<br>Go to Settings &rarr; Run Now.</div>
-  </div>
-  <div id="nav-bottom">
-    <button class="nav-btn" data-view="accounts">Accounts</button>
-    <button class="nav-btn" data-view="settings">Settings</button>
+  <div id="titlebar-controls">
+    <button class="tb-btn tb-min" title="Minimize" onclick="tbAction('minimize')">&#x2212;</button>
+    <button class="tb-btn tb-max" title="Maximize" onclick="tbAction('toggle_maximize')">&#x25A1;</button>
+    <button class="tb-btn tb-close" title="Close" onclick="tbAction('close_window')">&#x2715;</button>
   </div>
 </div>
 
-<!-- ── Main content area ─────────────────────────────────────────── -->
-<div id="app-main">
+<!-- ── App body below the title bar ─────────────────────────────────── -->
+<div id="app-body">
 
-  <!-- Home placeholder -->
-  <div id="view-home" class="app-view active">
-    <div class="home-content">
-      <div class="home-icon">&#x2299;</div>
-      <div class="home-title">Weekly Fetch</div>
-      <div class="home-subtitle">Select a report from the sidebar,<br>or go to Settings to run a fetch.</div>
+  <!-- ── Left app nav sidebar ──────────────────────────────────────── -->
+  <div id="app-nav">
+    <div id="nav-section-label">Reports</div>
+    <div id="report-list">
+      <div id="report-list-empty">No reports yet.<br>Run a fetch to get started.</div>
+    </div>
+    <div id="nav-bottom">
+      <button class="nav-btn" id="btn-generate" title="Fetch sources and generate today's report">
+        <span class="nav-icon">&#x21BA;</span>
+        <span class="nav-label">Generate Report</span>
+      </button>
+      <button class="nav-btn" data-view="sources">
+        <span class="nav-icon">&#x2630;</span>
+        <span class="nav-label">Sources</span>
+      </button>
+      <button class="nav-btn" data-view="settings">
+        <span class="nav-icon">&#x2699;</span>
+        <span class="nav-label">Settings</span>
+      </button>
+      <button class="nav-btn" data-view="about">
+        <span class="nav-icon">&#x2139;</span>
+        <span class="nav-label">About</span>
+      </button>
     </div>
   </div>
 
-  <!-- Accounts view -->
-  <div id="view-accounts" class="app-view">
-    <div class="app-view-content">
-      <div class="app-view-header">Accounts</div>
+  <!-- ── Main content area ─────────────────────────────────────────── -->
+  <div id="app-main">
 
-      <div class="form-section" data-platform="reddit">
-        <div class="form-section-title">Reddit</div>
-        <div class="form-group">
-          <label>Default min karma <span class="label-hint">global threshold (overridable per subreddit)</span></label>
-          <input type="number" id="reddit-min-karma" value="100" min="0">
-        </div>
-        <div class="form-group">
-          <label>Subreddits</label>
-          <div id="reddit-entries" class="entry-list"></div>
-          <button type="button" class="btn btn-add" onclick="addEntry('reddit')">+ Add subreddit</button>
-        </div>
+    <!-- Home view — state-driven CTA -->
+    <div id="view-home" class="app-view active">
+      <!-- No sources configured yet -->
+      <div id="home-no-sources" class="home-cta" style="display:none">
+        <div class="home-cta-label">Add sources</div>
       </div>
-
-      <div class="form-section" data-platform="bluesky">
-        <div class="form-section-title">Bluesky</div>
-        <div class="form-group">
-          <label>Default min likes <span class="label-hint">global threshold (overridable per account)</span></label>
-          <input type="number" id="bluesky-min-likes" value="10" min="0">
-        </div>
-        <div class="form-group">
-          <label>Accounts</label>
-          <div id="bluesky-entries" class="entry-list"></div>
-          <button type="button" class="btn btn-add" onclick="addEntry('bluesky')">+ Add account</button>
-        </div>
+      <!-- Sources exist, reports available -->
+      <div id="home-has-sources" class="home-cta" style="display:none">
+        <div class="home-cta-label">See today's Report</div>
       </div>
-
-      <div class="form-section" data-platform="tumblr">
-        <div class="form-section-title">Tumblr</div>
-        <div class="form-group">
-          <label>Default min notes <span class="label-hint">global threshold (overridable per blog)</span></label>
-          <input type="number" id="tumblr-min-notes" value="5" min="0">
-        </div>
-        <div class="form-group">
-          <label>Blogs</label>
-          <div id="tumblr-entries" class="entry-list"></div>
-          <button type="button" class="btn btn-add" onclick="addEntry('tumblr')">+ Add blog</button>
-        </div>
-      </div>
-
-      <div class="form-section" data-platform="instagram">
-        <div class="form-section-title">Instagram</div>
-        <div class="form-group">
-          <label>Default min likes <span class="label-hint">global threshold (overridable per account)</span></label>
-          <input type="number" id="instagram-min-likes" value="100" min="0">
-        </div>
-        <div class="form-group">
-          <label>Accounts</label>
-          <div id="instagram-entries" class="entry-list"></div>
-          <button type="button" class="btn btn-add" onclick="addEntry('instagram')">+ Add account</button>
-        </div>
-      </div>
-
-      <div class="form-actions">
-        <button class="btn btn-primary" id="btn-save-accounts">Save Accounts</button>
+      <!-- A fetch is in progress -->
+      <div id="home-fetching" class="home-cta home-cta-fetching" style="display:none">
+        <div class="home-cta-label">Generating report&hellip;</div>
       </div>
     </div>
-  </div>
 
-  <!-- Settings view -->
-  <div id="view-settings" class="app-view">
-    <div class="app-view-content">
-      <div class="app-view-header">Settings</div>
+    <!-- Sources view (formerly Accounts) -->
+    <div id="view-sources" class="app-view">
+      <div class="app-view-content">
+        <div class="app-view-header">Sources</div>
 
-      <div class="form-section">
-        <div class="form-section-title">Storage</div>
-        <div class="form-group">
-          <label>Data directory <span class="label-hint">where the SQLite database is stored</span></label>
-          <input type="text" id="setting-data-dir" placeholder="data">
+        <div class="form-section" data-platform="reddit">
+          <div class="form-section-title">Reddit</div>
+          <div class="form-group threshold-group">
+            <label for="reddit-min-karma">
+              Default min karma
+              <span class="label-hint">global floor — each subreddit can override this</span>
+            </label>
+            <input type="number" id="reddit-min-karma" value="100" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="reddit-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('reddit')">+ Add subreddit</button>
+          </div>
         </div>
-      </div>
 
-      <div class="form-section">
-        <div class="form-section-title">Scheduled Task</div>
-        <div class="form-group">
-          <label>Day of week</label>
-          <select id="setting-schedule-day">
-            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
-            <option>Thursday</option><option>Friday</option>
-            <option selected>Saturday</option><option>Sunday</option>
-          </select>
+        <div class="form-section" data-platform="bluesky">
+          <div class="form-section-title">Bluesky</div>
+          <div class="form-group threshold-group">
+            <label for="bluesky-min-likes">
+              Default min likes
+              <span class="label-hint">global floor — each account can override this</span>
+            </label>
+            <input type="number" id="bluesky-min-likes" value="10" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="bluesky-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('bluesky')">+ Add account</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Time (24h)</label>
-          <input type="time" id="setting-schedule-time" value="09:00">
-        </div>
-      </div>
 
-      <div class="form-actions">
-        <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
-        <button class="btn btn-secondary" id="btn-install-task">Install Task</button>
-        <button class="btn btn-danger" id="btn-remove-task">Remove Task</button>
-        <button class="btn btn-accent" id="btn-run-now">Run Now</button>
+        <div class="form-section" data-platform="tumblr">
+          <div class="form-section-title">Tumblr</div>
+          <div class="form-group threshold-group">
+            <label for="tumblr-min-notes">
+              Default min notes
+              <span class="label-hint">global floor — each blog can override this</span>
+            </label>
+            <input type="number" id="tumblr-min-notes" value="5" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="tumblr-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('tumblr')">+ Add blog</button>
+          </div>
+        </div>
+
+        <div class="form-section" data-platform="instagram">
+          <div class="form-section-title">Instagram</div>
+          <div class="form-group threshold-group">
+            <label for="instagram-min-likes">
+              Default min likes
+              <span class="label-hint">global floor — each account can override this</span>
+            </label>
+            <input type="number" id="instagram-min-likes" value="100" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="instagram-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('instagram')">+ Add account</button>
+          </div>
+        </div>
+
+        <div class="form-section" data-platform="mastodon">
+          <div class="form-section-title">Mastodon</div>
+          <div class="form-group threshold-group">
+            <label for="mastodon-min-favorites">
+              Default min favorites
+              <span class="label-hint">global floor — each account can override this</span>
+            </label>
+            <input type="number" id="mastodon-min-favorites" value="10" min="0" class="threshold-global">
+          </div>
+          <div class="form-group">
+            <div id="mastodon-entries" class="entry-list"></div>
+            <button type="button" class="btn btn-add" onclick="addEntry('mastodon')">+ Add account</button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" id="btn-save-sources">Save Sources</button>
+        </div>
       </div>
     </div>
-  </div>
 
-</div><!-- #app-main -->
+    <!-- Settings view -->
+    <div id="view-settings" class="app-view">
+      <div class="app-view-content">
+        <div class="app-view-header">Settings</div>
+
+        <div class="form-section">
+          <div class="form-section-title">Storage</div>
+          <div class="form-group">
+            <label>Data directory <span class="label-hint">where the SQLite database is stored</span></label>
+            <input type="text" id="setting-data-dir" placeholder="data">
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">Window</div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="setting-start-fullscreen" checked>
+              Start in full screen
+              <span class="label-hint">takes effect on next launch</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">Scheduled Task</div>
+          <div class="form-group">
+            <label>Time (24h)</label>
+            <input type="time" id="setting-schedule-time" value="09:00">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
+          <button class="btn btn-secondary" id="btn-install-task">Install Task</button>
+          <button class="btn btn-danger" id="btn-remove-task">Remove Task</button>
+          <button class="btn btn-accent" id="btn-run-now">Run Now</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- About view -->
+    <div id="view-about" class="app-view">
+      <div class="app-view-content">
+        <div class="app-view-header">About</div>
+
+        <div class="about-hero">
+          <img src="/static/logo.svg" class="about-icon" style="height:72px;width:72px;display:block;margin:0 auto 14px;">
+          <div class="about-name">Weekly Fetch</div>
+          <div class="about-version">Version 1.0.0</div>
+          <div class="about-tagline">Read without distractions.<br>Swipe thoughtfully instead of scrolling thoughtlessly.</div>
+        </div>
+
+        <div class="form-section about-section">
+          <div class="form-section-title">What it does</div>
+          <p class="about-desc">
+            Weekly Fetch pulls your favourite subreddits, Bluesky accounts, Tumblr blogs,
+            Instagram profiles, and Mastodon accounts on a schedule you set, then presents
+            the best posts as a distraction-free flashcard digest — one card at a time, no infinite scroll.
+          </p>
+          <p class="about-desc">
+            Notes you write per card are saved to a local SQLite database. Your data never
+            leaves your machine.
+          </p>
+        </div>
+
+        <div class="form-section about-section">
+          <div class="form-section-title">Keyboard shortcuts (in report view)</div>
+          <div class="about-keys">
+            <div class="about-key-row"><kbd>h</kbd> <span>Previous card</span></div>
+            <div class="about-key-row"><kbd>l</kbd> <span>Next card</span></div>
+            <div class="about-key-row"><kbd>j</kbd> <span>Scroll down</span></div>
+            <div class="about-key-row"><kbd>k</kbd> <span>Scroll up</span></div>
+            <div class="about-key-row"><kbd>c</kbd> <span>Toggle comments</span></div>
+            <div class="about-key-row"><kbd>Ctrl</kbd><kbd>N</kbd> <span>Focus notes sidebar</span></div>
+            <div class="about-key-row"><kbd>&#x2190;</kbd><kbd>&#x2192;</kbd> <span>Navigate cards</span></div>
+          </div>
+        </div>
+
+        <div class="form-section about-section">
+          <div class="form-section-title">Links</div>
+          <div class="about-links">
+            <a href="https://github.com/arkmohba/Weekly-Fetch" target="_blank" rel="noopener" class="about-link">
+              &#x2197; GitHub Repository
+            </a>
+            <a href="https://github.com/arkmohba/Weekly-Fetch/issues" target="_blank" rel="noopener" class="about-link">
+              &#x2197; Report an Issue
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #app-main -->
+
+</div><!-- #app-body -->
 
 <!-- ── Full-screen digest viewer overlay ─────────────────────────── -->
 <div id="viewer-overlay">
@@ -152,9 +265,10 @@
 
   <div id="viewer-app">
     <div id="topbar">
-      <button id="viewer-back">&larr; Back</button>
-      <div id="tabs"></div>
-      <div id="topbar-progress"></div>
+<div id="tabs"></div>
+      <div id="topbar-right">
+        <div id="topbar-progress"></div>
+      </div>
     </div>
 
     <div id="layout">
@@ -163,15 +277,13 @@
           <div id="card"></div>
           <div id="card-comments"></div>
         </div>
-        <div id="nav-bar">
-          <button id="btn-prev" onclick="navigate(-1)">&larr; Prev</button>
-          <span id="nav-label"></span>
-          <button id="btn-next" onclick="navigate(1)">Next &rarr;</button>
-        </div>
       </div>
 
       <div id="sidebar">
-        <div id="sidebar-header">Notes</div>
+        <div id="sidebar-header">
+          <span>Notes</span>
+          <button id="btn-copy-notes" title="Copy notes to clipboard">&#x2398; Copy</button>
+        </div>
         <div id="notes-post-title"></div>
         <textarea id="notes" placeholder="Click to start a bullet list&hellip;"></textarea>
       </div>
@@ -187,6 +299,59 @@ MathJax = {
   },
   startup: { typeset: false }
 };
+
+// ── Title bar window control bridge ───────────────────────────────────────────
+// pywebview exposes Python methods at window.pywebview.api.*
+// When running in a browser during dev, pywebview is absent — the buttons just do nothing.
+function tbAction(name) {
+  if (window.pywebview && window.pywebview.api) {
+    window.pywebview.api[name]();
+  }
+}
+
+// ── Title bar drag (frameless window) ─────────────────────────────────────────
+// CSS `-webkit-app-region: drag` doesn't work in pywebview/Edge WebView2 without
+// a special WebView2 flag. We implement drag via the pywebview Python bridge instead:
+// mousedown → fetch window screen position from Python, then on each mousemove
+// tell Python to move the window to (initial_pos + delta).
+(function () {
+  var drag = document.getElementById('titlebar-drag');
+  var dragging = false;
+  var startSX, startSY, winX, winY;
+  var rafPending = false, pendingX, pendingY;
+
+  drag.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    if (!window.pywebview || !window.pywebview.api) return;
+    e.preventDefault();
+    startSX = e.screenX;
+    startSY = e.screenY;
+    dragging = false; // wait for position fetch
+    window.pywebview.api.get_window_pos().then(function (pos) {
+      winX = pos.x;
+      winY = pos.y;
+      dragging = true;
+    });
+  });
+
+  document.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    pendingX = winX + (e.screenX - startSX);
+    pendingY = winY + (e.screenY - startSY);
+    // Throttle to one call per animation frame so we don't flood the bridge.
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(function () {
+        window.pywebview.api.move_window(pendingX, pendingY);
+        rafPending = false;
+      });
+    }
+  });
+
+  document.addEventListener('mouseup', function () {
+    dragging = false;
+  });
+})();
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

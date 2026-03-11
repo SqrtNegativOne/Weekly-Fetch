@@ -121,25 +121,20 @@ def create_app() -> FastAPI:
         if body:
             save_settings(body)
 
+        settings = load_settings()
         if _frozen:
-            # Frozen exe: register the exe itself with --fetch flag
-            settings = load_settings()
-            day_abbr = settings["schedule_day"][:3].upper()
             task_cmd = f'"{sys.executable}" --fetch'
-            result = subprocess.run(
-                ["schtasks", "/Create", "/F",
-                 "/SC", "WEEKLY", "/D", day_abbr,
-                 "/ST", settings["schedule_time"],
-                 "/TN", "WeeklyFetchDigest",
-                 "/TR", task_cmd,
-                 "/RL", "LIMITED"],
-                capture_output=True, text=True,
-            )
         else:
-            result = subprocess.run(
-                [sys.executable, str(BASE_DIR / "install.py")],
-                capture_output=True, text=True, cwd=str(BASE_DIR),
-            )
+            task_cmd = f'"{sys.executable}" "{BASE_DIR / "src" / "main.py"}"'
+        result = subprocess.run(
+            ["schtasks", "/Create", "/F",
+             "/SC", "DAILY",
+             "/ST", settings["schedule_time"],
+             "/TN", "WeeklyFetchDigest",
+             "/TR", task_cmd,
+             "/RL", "LIMITED"],
+            capture_output=True, text=True,
+        )
 
         if result.returncode != 0:
             raise HTTPException(
@@ -157,6 +152,11 @@ def create_app() -> FastAPI:
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=result.stderr)
         return {"ok": True}
+
+    @app.get("/api/fetch-status")
+    def fetch_status() -> dict:
+        """Return whether a fetch is currently running (lock file present)."""
+        return {"running": (BASE_DIR / "fetch.lock").exists()}
 
     @app.post("/api/run-now")
     def run_now() -> dict:

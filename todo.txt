@@ -1,1 +1,9 @@
-Add support for twitter, bsky, tumblr, instagram.
+In order of asking:
+
+Add logging using loguru. When an error happens, show it to the user in the form of a notification, like you show "generating report check back later" notification.
+
+Instead of just saying "generating report check back later" when clicking on the generate report, show the progress of generating the report on the main screen. If the user has a report scheduled for that day, and they open the gui app while the generation process is going on in the background, the progresss should be shown to the user on the main screen.
+
+Suppose I view source X every 4 days. Source X has 4 posts in those 4 days, one for each day, and each day he gets equal likes on each post: the post in the last 4 days gets 396, the last 3 days gets 297, 2 gets 198, and 1 gets 99. The threshold is 100. So, the latest post doesn't appear in my report. But, by the time my next report arrives, the post does have enough likes to appear on my report, but doesn't because now it's too old. How can this issue be fixed? Is it called something? Pretty sure someone has tried to solve it in the past. Talk to me.
+
+Hard: Add support for twitter.

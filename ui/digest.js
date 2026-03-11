@@ -1,13 +1,15 @@
 /**
  * digest.js — flashcard viewer for the app.
  *
- * Difference from src/digest.js:
- *   - Wrapped in window.initDigestViewer(posts, weekTag) instead of
- *     reading from a <script type="application/json"> tag.
- *   - Notes are pre-populated from post.note (data from the DB).
- *   - Notes are saved to the API on blur in addition to localStorage.
- *
  * Called by app.js after a report is fetched from /api/reports/{tag}.
+ *
+ * Keyboard shortcuts (active when viewer is open and not typing):
+ *   h / ←        previous card
+ *   l / →        next card
+ *   j / ↓        scroll card down
+ *   k / ↑        scroll card up
+ *   c            toggle comments section
+ *   Ctrl+N       focus notes sidebar
  */
 window.initDigestViewer = function (POSTS, weekTag) {
   let current = 0;
@@ -49,19 +51,18 @@ window.initDigestViewer = function (POSTS, weekTag) {
     if (platform === 'reddit')    return 'r/';
     if (platform === 'bluesky')   return '@';
     if (platform === 'instagram') return '@';
+    if (platform === 'mastodon')  return '@';
     return '';
   }
 
   function platformBadge(platform) {
     if (!platform || platform === 'reddit') return '';
-    const labels = { bluesky: 'bsky', tumblr: 'tumblr', instagram: 'ig' };
+    const labels = { bluesky: 'bsky', tumblr: 'tumblr', instagram: 'ig', mastodon: 'masto' };
     const label  = labels[platform] || platform;
     return '<span class="platform-badge pb-' + platform + '">' + label + '</span>';
   }
 
   // ── Pre-populate localStorage from DB notes ───────
-  // This means the notes_summary card (which reads localStorage) shows
-  // notes from the DB even on the first open.
   POSTS.forEach(p => {
     if (p.note && p.link && !localStorage.getItem('note:' + p.link)) {
       localStorage.setItem('note:' + p.link, p.note);
@@ -82,7 +83,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
   // ── Build tab bar ─────────────────────────────────
   const tabDefs = [];
   const tabsEl  = document.getElementById('tabs');
-  tabsEl.innerHTML = '';  // clear any previous tabs
+  tabsEl.innerHTML = '';
 
   function makeTab(label, extraClass) {
     const btn = document.createElement('button');
@@ -103,12 +104,13 @@ window.initDigestViewer = function (POSTS, weekTag) {
       ? subStarts[subList[i + 1]] - 1
       : POSTS.length - 2;
     const platform = subPlatformMap[sub] || 'reddit';
-    const btn      = makeTab(platformPrefix(platform) + sub);
+    const count    = end - start + 1;
+    const btn      = makeTab(platformPrefix(platform) + sub + ' (' + count + ')');
     btn.onclick    = () => navigateTo(start);
     tabDefs.push({ start, end, el: btn });
   });
 
-  const notesTabBtn = makeTab('✎ Notes', 'tab-special');
+  const notesTabBtn = makeTab('\u270e Notes', 'tab-special');
   notesTabBtn.onclick = () => navigateTo(POSTS.length - 1);
   tabDefs.push({ start: POSTS.length - 1, end: POSTS.length - 1, el: notesTabBtn });
 
@@ -149,7 +151,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
 
     const platformNames = {
       reddit: 'Reddit', bluesky: 'Bluesky',
-      tumblr: 'Tumblr', instagram: 'Instagram',
+      tumblr: 'Tumblr', instagram: 'Instagram', mastodon: 'Mastodon',
     };
 
     function chipEl(s) {
@@ -190,8 +192,11 @@ window.initDigestViewer = function (POSTS, weekTag) {
         '<details class="cover-hint">' +
           '<summary>keyboard shortcuts</summary>' +
           '<div class="cover-hint-body">' +
-            '<kbd>&larr;</kbd> / <kbd>&rarr;</kbd> &nbsp; navigate cards<br>' +
-            '<kbd>&uarr;</kbd> / <kbd>&darr;</kbd> &nbsp; also navigate<br>' +
+            '<kbd>h</kbd> / <kbd>l</kbd> &nbsp; previous / next card<br>' +
+            '<kbd>j</kbd> / <kbd>k</kbd> &nbsp; scroll down / up<br>' +
+            '<kbd>c</kbd> &nbsp; toggle comments<br>' +
+            '<kbd>Ctrl+N</kbd> &nbsp; focus notes<br>' +
+            '<kbd>Esc</kbd> &nbsp; back to home<br>' +
           '</div>' +
         '</details>' +
       '</div>';
@@ -218,7 +223,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
 
     let html = '<div class="ns-header">Your Notes</div>';
     for (const [sub, posts] of Object.entries(groups)) {
-      const platform  = (posts[0] && posts[0].platform) || 'reddit';
+      const platform   = (posts[0] && posts[0].platform) || 'reddit';
       const groupLabel = platformPrefix(platform) + sub;
       html += '<div class="note-group"><div class="note-group-label">' +
         escAttr(groupLabel) + '</div>';
@@ -269,7 +274,8 @@ window.initDigestViewer = function (POSTS, weekTag) {
   }
 
   // ── Main render function ──────────────────────────
-  const sidebarEl = document.getElementById('sidebar');
+  const sidebarEl   = document.getElementById('sidebar');
+  const cardScrollEl = document.getElementById('card-scroll');
 
   function renderCard(index) {
     const p = POSTS[index];
@@ -283,10 +289,6 @@ window.initDigestViewer = function (POSTS, weekTag) {
       (index + 1) + ' / ' + POSTS.length;
     document.getElementById('topbar').style.setProperty(
       '--progress', ((index + 1) / POSTS.length * 100) + '%');
-    document.getElementById('nav-label').textContent =
-      (index + 1) + ' of ' + POSTS.length;
-    document.getElementById('btn-prev').disabled = index === 0;
-    document.getElementById('btn-next').disabled = index === POSTS.length - 1;
 
     updateBg(getPalette(p));
 
@@ -346,14 +348,14 @@ window.initDigestViewer = function (POSTS, weekTag) {
         commentsEl.style.display = 'none';
       }
 
-      // Populate notes sidebar — from localStorage (pre-seeded from DB note)
+      // Populate notes sidebar
       const notesEl    = document.getElementById('notes');
       const notesTitEl = document.getElementById('notes-post-title');
       notesEl.value       = bulletizeNote(localStorage.getItem('note:' + p.link) || '');
       notesTitEl.textContent = decodeHtml(p.title);
     }
 
-    document.getElementById('card-scroll').scrollTop = 0;
+    cardScrollEl.scrollTop = 0;
   }
 
   // ── Navigation ────────────────────────────────────
@@ -362,7 +364,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
     const cardEl = document.getElementById('card');
     const cls    = index > current ? 'anim-fwd' : 'anim-bwd';
     cardEl.classList.remove('anim-fwd', 'anim-bwd');
-    void cardEl.offsetWidth;  // force reflow to restart animation
+    void cardEl.offsetWidth;
     cardEl.classList.add(cls);
     renderCard(index);
   }
@@ -370,21 +372,93 @@ window.initDigestViewer = function (POSTS, weekTag) {
   function navigate(delta) { navigateTo(current + delta); }
   window.navigate = navigate;
 
-  // Arrow keys (skip when typing in notes)
+  // ── Keyboard shortcuts ────────────────────────────
+  //
+  // When focus is in a textarea/input we don't capture h/j/k/l/c.
+  // Ctrl+N works everywhere (it's an explicit toggle intent).
   function _onKeyDown(e) {
-    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(1);
+    const inText = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
+
+    // Ctrl+N → focus notes sidebar (works even when typing)
+    if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      const notesEl = document.getElementById('notes');
+      if (notesEl && sidebarEl.style.display !== 'none') {
+        notesEl.focus();
+        notesEl.selectionStart = notesEl.selectionEnd = notesEl.value.length;
+      }
+      return;
+    }
+
+    if (inText) return;
+
+    if (e.key === 'ArrowLeft'  || e.key === 'h') { e.preventDefault(); navigate(-1); return; }
+    if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); navigate(1);  return; }
+
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      cardScrollEl.scrollBy({ top: 120, behavior: 'smooth' });
+      return;
+    }
+    if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      cardScrollEl.scrollBy({ top: -120, behavior: 'smooth' });
+      return;
+    }
+
+    if (e.key === 'c') {
+      const commentsEl = document.getElementById('card-comments');
+      if (commentsEl && commentsEl.style.display !== 'none') {
+        commentsEl.classList.toggle('comments-open');
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (typeof window.viewerBack === 'function') window.viewerBack();
+      return;
+    }
   }
-  // Remove any previous listener (in case initDigestViewer is called again)
+
   document.removeEventListener('keydown', window._digestKeyDown);
   window._digestKeyDown = _onKeyDown;
   document.addEventListener('keydown', _onKeyDown);
 
+  // ── Copy notes button ─────────────────────────────
+  const copyBtn = document.getElementById('btn-copy-notes');
+  if (copyBtn) {
+    copyBtn.onclick = function () {
+      const real  = POSTS.filter(p => p.type !== 'cover' && p.type !== 'notes_summary');
+      const noted = real.filter(p => localStorage.getItem('note:' + p.link));
+      if (noted.length === 0) {
+        showToastFromViewer('No notes to copy', 'error');
+        return;
+      }
+      const lines = [];
+      noted.forEach(p => {
+        lines.push('## ' + p.title);
+        const raw = localStorage.getItem('note:' + p.link) || '';
+        lines.push(raw);
+        lines.push('');
+      });
+      navigator.clipboard.writeText(lines.join('\n')).then(function () {
+        showToastFromViewer('Notes copied to clipboard');
+      }).catch(function () {
+        showToastFromViewer('Copy failed', 'error');
+      });
+    };
+  }
+
+  // showToast is defined in app.js — call it if available, else console.log
+  function showToastFromViewer(msg, type) {
+    if (typeof showToast === 'function') showToast(msg, type);
+    else console.log(msg);
+  }
+
   // ── Notes — save to localStorage + API on change ──
   const notesTextarea = document.getElementById('notes');
 
-  // Debounce: wait 800 ms after the user stops typing before hitting the API.
   let _notesSaveTimer = null;
 
   function saveNoteToApi(p, text) {
@@ -396,7 +470,7 @@ window.initDigestViewer = function (POSTS, weekTag) {
     }).catch(console.error);
   }
 
-  notesTextarea.addEventListener('input', () => {
+  function _notesInput() {
     const p = POSTS[current];
     if (!p || p.type === 'notes_summary' || p.type === 'cover') return;
     const text = notesTextarea.value;
@@ -404,18 +478,17 @@ window.initDigestViewer = function (POSTS, weekTag) {
 
     clearTimeout(_notesSaveTimer);
     _notesSaveTimer = setTimeout(() => saveNoteToApi(p, text), 800);
-  });
+  }
 
-  // Also save immediately on blur (so closing the viewer doesn't lose unsaved notes)
-  notesTextarea.addEventListener('blur', () => {
+  function _notesBlur() {
     const p = POSTS[current];
     if (!p || p.type === 'notes_summary' || p.type === 'cover') return;
     clearTimeout(_notesSaveTimer);
     saveNoteToApi(p, notesTextarea.value);
-  });
+  }
 
-  // Bullet-point: auto-insert "• " on Enter
-  notesTextarea.addEventListener('keydown', e => {
+  // Auto bullet: Enter → "• " on next line
+  function _notesKeydown(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
       const ta    = e.target;
@@ -424,15 +497,28 @@ window.initDigestViewer = function (POSTS, weekTag) {
       ta.selectionStart = ta.selectionEnd = start + 3;
       ta.dispatchEvent(new Event('input'));
     }
-  });
+  }
 
-  // Bullet-point: seed empty textarea with "• " on focus
-  notesTextarea.addEventListener('focus', e => {
+  // Seed empty textarea with "• " on focus
+  function _notesFocus(e) {
     if (!e.target.value.trim()) {
       e.target.value = '• ';
       e.target.selectionStart = e.target.selectionEnd = e.target.value.length;
     }
-  });
+  }
+
+  // Remove any listeners from a previous initDigestViewer call before re-adding
+  if (window._notesHandlers) {
+    notesTextarea.removeEventListener('input',   window._notesHandlers.input);
+    notesTextarea.removeEventListener('blur',    window._notesHandlers.blur);
+    notesTextarea.removeEventListener('keydown', window._notesHandlers.keydown);
+    notesTextarea.removeEventListener('focus',   window._notesHandlers.focus);
+  }
+  window._notesHandlers = { input: _notesInput, blur: _notesBlur, keydown: _notesKeydown, focus: _notesFocus };
+  notesTextarea.addEventListener('input',   _notesInput);
+  notesTextarea.addEventListener('blur',    _notesBlur);
+  notesTextarea.addEventListener('keydown', _notesKeydown);
+  notesTextarea.addEventListener('focus',   _notesFocus);
 
   renderCard(0);
 };

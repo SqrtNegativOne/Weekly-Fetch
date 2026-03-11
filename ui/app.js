@@ -3,13 +3,49 @@
  *
  * Responsibilities:
  *   - Populate the report list sidebar from /api/reports
- *   - Show/hide views (home, accounts, settings, viewer overlay)
+ *   - Show/hide views (home, sources, settings, about, viewer overlay)
  *   - Load a report and hand off to initDigestViewer()
- *   - Accounts: load from / save to /api/accounts
+ *   - Sources: load from / save to /api/accounts
  *   - Settings: load from / save to /api/settings
  *   - Task buttons: install, remove, run-now
  *   - Toast notifications for user feedback
  */
+
+// ── Home CTA state ────────────────────────────────────────────────────────────
+
+var _hasSources  = false;
+var _fetchRunning = false;
+
+function updateHomeCta() {
+  var noSrc    = document.getElementById('home-no-sources');
+  var hasSrc   = document.getElementById('home-has-sources');
+  var fetching = document.getElementById('home-fetching');
+  noSrc.style.display    = 'none';
+  hasSrc.style.display   = 'none';
+  fetching.style.display = 'none';
+  if (_fetchRunning) {
+    fetching.style.display = 'flex';
+  } else if (_hasSources) {
+    hasSrc.style.display = 'flex';
+  } else {
+    noSrc.style.display = 'flex';
+  }
+}
+
+async function pollFetchStatus() {
+  var wasRunning = _fetchRunning;
+  try {
+    var res = await api('GET', '/api/fetch-status');
+    _fetchRunning = res.running;
+  } catch (e) {
+    _fetchRunning = false;
+  }
+  // Report just finished — refresh the list so the new entry appears
+  if (wasRunning && !_fetchRunning) {
+    loadReports();
+  }
+  updateHomeCta();
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -43,14 +79,14 @@ function showToast(msg, type) {
 
 // ── View routing ──────────────────────────────────────────────────────────────
 
-var VIEWS = ['home', 'accounts', 'settings'];
+var VIEWS = ['home', 'sources', 'settings', 'about'];
 
 function showView(name) {
   VIEWS.forEach(function (v) {
     var el = document.getElementById('view-' + v);
     if (el) el.classList.toggle('active', v === name);
   });
-  document.querySelectorAll('.nav-btn').forEach(function (btn) {
+  document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
     btn.classList.toggle('active', btn.dataset.view === name);
   });
   if (name !== 'home') {
@@ -123,21 +159,17 @@ async function openReport(tag, btnEl) {
   if (btnEl) btnEl.classList.add('active');
 
   showView('home');
-  document.getElementById('view-home').querySelector('.home-subtitle').textContent =
-    'Loading ' + tag + '\u2026';
 
   var posts;
   try {
     posts = await api('GET', '/api/reports/' + encodeURIComponent(tag));
   } catch (e) {
-    document.getElementById('view-home').querySelector('.home-subtitle').textContent =
-      'Failed to load report: ' + e.message;
+    showToast('Failed to load report: ' + e.message, 'error');
     return;
   }
 
   if (!posts || posts.length === 0) {
-    document.getElementById('view-home').querySelector('.home-subtitle').textContent =
-      'No posts found for ' + tag + '.';
+    showToast('No posts found for ' + tag, 'error');
     return;
   }
 
@@ -185,98 +217,100 @@ async function openReport(tag, btnEl) {
 // ── Viewer overlay ────────────────────────────────────────────────────────────
 
 function openViewer(posts, weekTag) {
-  document.getElementById('viewer-overlay').classList.add('active');
+  var overlay = document.getElementById('viewer-overlay');
+  // Cancel any in-progress close animation before opening
+  overlay.classList.remove('leaving');
+  overlay.classList.add('active');
   window.initDigestViewer(posts, weekTag);
 }
 
 function closeViewer() {
-  document.getElementById('viewer-overlay').classList.remove('active');
+  var overlay = document.getElementById('viewer-overlay');
+  if (!overlay.classList.contains('active')) return;
+  overlay.classList.add('leaving');
+  setTimeout(function () {
+    overlay.classList.remove('active', 'leaving');
+  }, 220);
 }
 
 window.viewerBack = function () {
   closeViewer();
-  document.getElementById('view-home').querySelector('.home-subtitle').textContent =
-    'Select a report from the sidebar,\nor go to Settings to run a fetch.';
   showView('home');
+  updateHomeCta();
 };
 
-// ── Accounts ──────────────────────────────────────────────────────────────────
+// ── Sources (was: Accounts) ───────────────────────────────────────────────────
 
 // Platform config: maps platform → { listKey, thresholdKey, namePlaceholder }
 var PLATFORM_CONFIG = {
   reddit:    { listKey: 'subreddits', thresholdKey: 'karma',    globalKey: 'min_karma', namePlaceholder: 'MachineLearning' },
   bluesky:   { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'jay.bsky.social' },
   tumblr:    { listKey: 'blogs',      thresholdKey: 'min_notes', globalKey: 'min_notes', namePlaceholder: 'staff' },
-  instagram: { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'natgeo' },
+  instagram: { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'natgeo' },
+  mastodon:  { listKey: 'accounts',   thresholdKey: 'min_favorites', globalKey: 'min_favorites', namePlaceholder: 'username@mastodon.social' },
 };
 
-// Schedule presets the user can pick from
-var SCHEDULE_OPTIONS = [
-  { label: 'Every Saturday',   value: { every_weekday: 'Saturday' } },
-  { label: 'Every Sunday',     value: { every_weekday: 'Sunday' } },
-  { label: 'Every Monday',     value: { every_weekday: 'Monday' } },
-  { label: 'Every Tuesday',    value: { every_weekday: 'Tuesday' } },
-  { label: 'Every Wednesday',  value: { every_weekday: 'Wednesday' } },
-  { label: 'Every Thursday',   value: { every_weekday: 'Thursday' } },
-  { label: 'Every Friday',     value: { every_weekday: 'Friday' } },
-  { label: 'Daily',            value: { every_n_days: 1 } },
-  { label: 'Every 3 days',     value: { every_n_days: 3 } },
-  { label: 'Weekly',           value: { every_n_weeks: 1 } },
-  { label: 'Every 2 weeks',    value: { every_n_weeks: 2 } },
-  { label: 'Monthly',          value: { every_n_months: 1 } },
-];
+var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-function scheduleToIndex(sched) {
-  if (!sched) return 0;
-  for (var i = 0; i < SCHEDULE_OPTIONS.length; i++) {
-    var opt = SCHEDULE_OPTIONS[i].value;
-    var keys = Object.keys(opt);
-    if (keys.length === 1 && keys[0] in sched && sched[keys[0]] === opt[keys[0]]) return i;
-  }
-  return 0;
+// ── Schedule data ↔ display ───────────────────────────────────────────────────
+//
+// Backend key names (schedule.py):
+//   every_weekday  : "Saturday"   → fetch every named weekday
+//   every_n_days   : N            → fetch every N days
+//   day_n_of_month : N, every_n_months implied as 1  (schedule.py just checks day_n_of_month)
+//
+// We map these to three UI types:
+//   'weekday'   → { every_weekday: "Monday" }
+//   'ndays'     → { every_n_days: N }
+//   'monthday'  → { day_n_of_month: N }
+
+function scheduleToDisplay(sched) {
+  if (!sched) return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
+  if (sched.every_weekday)  return { type: 'weekday',  weekday: sched.every_weekday, n: 7, day: 1 };
+  if (sched.every_n_days)   return { type: 'ndays',    weekday: 'Saturday', n: sched.every_n_days, day: 1 };
+  if (sched.day_n_of_month) return { type: 'monthday', weekday: 'Saturday', n: 7, day: sched.day_n_of_month };
+  return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
 }
 
+function displayToSchedule(type, weekday, n, day) {
+  if (type === 'weekday')  return { every_weekday: weekday };
+  if (type === 'ndays')    return { every_n_days: Math.max(1, parseInt(n) || 1) };
+  if (type === 'monthday') return { day_n_of_month: Math.max(1, Math.min(31, parseInt(day) || 1)) };
+  return { every_weekday: 'Saturday' };
+}
+
+// ── Entry row builder ─────────────────────────────────────────────────────────
+//
+// Each row is two lines:
+//   Top:    [name input ···················] [× remove]
+//   Bottom: [type▼] [weekday▼ | N days | day N] [threshold field]
+
 function createEntryRow(platform, entry) {
-  // entry can be a string (legacy: just a name) or an object { name, schedule, <threshold> }
   var name = typeof entry === 'string' ? entry : (entry.name || '');
-  var schedule = typeof entry === 'object' ? entry.schedule : null;
+  var sched = typeof entry === 'object' ? entry.schedule : null;
   var cfg = PLATFORM_CONFIG[platform];
-  var threshold = '';
+
+  var threshVal = '';
   if (typeof entry === 'object' && entry[cfg.thresholdKey] != null) {
-    threshold = String(entry[cfg.thresholdKey]);
+    threshVal = String(entry[cfg.thresholdKey]);
   }
 
+  var ds = scheduleToDisplay(sched);  // { type, weekday, n, day }
+
+  // ── Outer row ──
   var row = document.createElement('div');
   row.className = 'entry-row';
 
-  // Name input
+  // ── Top line: name + remove ──
+  var topLine = document.createElement('div');
+  topLine.className = 'entry-row-top';
+
   var nameInput = document.createElement('input');
   nameInput.type = 'text';
   nameInput.className = 'entry-name';
   nameInput.placeholder = cfg.namePlaceholder;
   nameInput.value = name;
 
-  // Schedule dropdown
-  var schedSelect = document.createElement('select');
-  schedSelect.className = 'entry-schedule';
-  SCHEDULE_OPTIONS.forEach(function (opt, i) {
-    var option = document.createElement('option');
-    option.value = i;
-    option.textContent = opt.label;
-    schedSelect.appendChild(option);
-  });
-  schedSelect.value = scheduleToIndex(schedule);
-
-  // Local threshold override (optional)
-  var threshInput = document.createElement('input');
-  threshInput.type = 'number';
-  threshInput.className = 'entry-threshold';
-  threshInput.placeholder = 'default';
-  threshInput.min = '0';
-  threshInput.title = 'Local threshold override (leave empty to use global)';
-  threshInput.value = threshold;
-
-  // Remove button
   var removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'entry-remove';
@@ -284,18 +318,122 @@ function createEntryRow(platform, entry) {
   removeBtn.title = 'Remove';
   removeBtn.onclick = function () { row.remove(); };
 
-  row.appendChild(nameInput);
-  row.appendChild(schedSelect);
-  row.appendChild(threshInput);
-  row.appendChild(removeBtn);
+  topLine.appendChild(nameInput);
+  topLine.appendChild(removeBtn);
 
+  // ── Bottom line: schedule type + params + threshold ──
+  var botLine = document.createElement('div');
+  botLine.className = 'entry-row-bot';
+
+  // Schedule type selector
+  var typeSelect = document.createElement('select');
+  typeSelect.className = 'entry-sched-type';
+  [
+    { value: 'weekday',  label: 'Every' },
+    { value: 'ndays',    label: 'Every … days' },
+    { value: 'monthday', label: 'Day … of month' },
+  ].forEach(function (opt) {
+    var o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    typeSelect.appendChild(o);
+  });
+  typeSelect.value = ds.type;
+
+  // Param area — changes based on type selection
+  var paramArea = document.createElement('div');
+  paramArea.className = 'entry-sched-params';
+
+  function buildParams(type, weekday, n, day) {
+    paramArea.innerHTML = '';
+    if (type === 'weekday') {
+      var sel = document.createElement('select');
+      sel.className = 'entry-param-select';
+      sel.dataset.role = 'weekday';
+      WEEKDAYS.forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        sel.appendChild(o);
+      });
+      sel.value = weekday || 'Saturday';
+      paramArea.appendChild(sel);
+
+    } else if (type === 'ndays') {
+      var inp = document.createElement('input');
+      inp.type = 'number'; inp.min = '1'; inp.max = '365';
+      inp.className = 'entry-param-num';
+      inp.dataset.role = 'n';
+      inp.value = n || 7;
+      inp.title = 'Number of days between fetches';
+      var lbl = document.createElement('span');
+      lbl.className = 'entry-param-label';
+      lbl.textContent = 'days';
+      paramArea.appendChild(inp);
+      paramArea.appendChild(lbl);
+
+    } else if (type === 'monthday') {
+      var inp2 = document.createElement('input');
+      inp2.type = 'number'; inp2.min = '1'; inp2.max = '31';
+      inp2.className = 'entry-param-num';
+      inp2.dataset.role = 'day';
+      inp2.value = day || 1;
+      inp2.title = 'Day of the month (1–31)';
+      var lbl2 = document.createElement('span');
+      lbl2.className = 'entry-param-label';
+      lbl2.textContent = 'of every month';
+      paramArea.appendChild(inp2);
+      paramArea.appendChild(lbl2);
+    }
+  }
+
+  buildParams(ds.type, ds.weekday, ds.n, ds.day);
+
+  typeSelect.onchange = function () {
+    var cur = getSchedParams(paramArea);
+    buildParams(typeSelect.value, cur.weekday, cur.n, cur.day);
+  };
+
+  // Threshold override
+  var threshWrap = document.createElement('div');
+  threshWrap.className = 'entry-thresh-wrap';
+  var threshLabel = document.createElement('span');
+  threshLabel.className = 'entry-thresh-label';
+  threshLabel.textContent = cfg.thresholdKey === 'karma'         ? 'min karma' :
+                             cfg.thresholdKey === 'min_notes'     ? 'min notes' :
+                             cfg.thresholdKey === 'min_favorites' ? 'min favs' : 'min likes';
+  var threshInput = document.createElement('input');
+  threshInput.type = 'number';
+  threshInput.className = 'entry-threshold';
+  threshInput.placeholder = 'default';
+  threshInput.min = '0';
+  threshInput.title = 'Override the global minimum for this source. Leave empty to use the global default.';
+  threshInput.value = threshVal;
+  threshWrap.appendChild(threshLabel);
+  threshWrap.appendChild(threshInput);
+
+  botLine.appendChild(typeSelect);
+  botLine.appendChild(paramArea);
+  botLine.appendChild(threshWrap);
+
+  row.appendChild(topLine);
+  row.appendChild(botLine);
   return row;
+}
+
+function getSchedParams(paramArea) {
+  var weekdayEl = paramArea.querySelector('[data-role="weekday"]');
+  var nEl       = paramArea.querySelector('[data-role="n"]');
+  var dayEl     = paramArea.querySelector('[data-role="day"]');
+  return {
+    weekday: weekdayEl ? weekdayEl.value : 'Saturday',
+    n:       nEl  ? parseInt(nEl.value)  || 7 : 7,
+    day:     dayEl ? parseInt(dayEl.value) || 1 : 1,
+  };
 }
 
 window.addEntry = function (platform) {
   var container = document.getElementById(platform + '-entries');
   container.appendChild(createEntryRow(platform, ''));
-  // Focus the new name input
   var inputs = container.querySelectorAll('.entry-name');
   inputs[inputs.length - 1].focus();
 };
@@ -316,11 +454,14 @@ function collectEntries(platform) {
   rows.forEach(function (row) {
     var name = row.querySelector('.entry-name').value.trim();
     if (!name) return;
-    var schedIdx = parseInt(row.querySelector('.entry-schedule').value) || 0;
+
+    var type = row.querySelector('.entry-sched-type').value;
+    var params = getSchedParams(row.querySelector('.entry-sched-params'));
     var threshVal = row.querySelector('.entry-threshold').value.trim();
+
     var entry = {
       name: name,
-      schedule: SCHEDULE_OPTIONS[schedIdx].value,
+      schedule: displayToSchedule(type, params.weekday, params.n, params.day),
     };
     if (threshVal !== '') {
       entry[cfg.thresholdKey] = parseInt(threshVal) || 0;
@@ -330,12 +471,12 @@ function collectEntries(platform) {
   return entries;
 }
 
-async function loadAccounts() {
+async function loadSources() {
   var data;
   try {
     data = await api('GET', '/api/accounts');
   } catch (e) {
-    showToast('Failed to load accounts: ' + e.message, 'error');
+    showToast('Failed to load sources: ' + e.message, 'error');
     return;
   }
 
@@ -343,19 +484,26 @@ async function loadAccounts() {
   var b  = data.bluesky   || {};
   var t  = data.tumblr    || {};
   var ig = data.instagram || {};
+  var ms = data.mastodon  || {};
 
-  document.getElementById('reddit-min-karma').value    = r.min_karma ?? 100;
-  document.getElementById('bluesky-min-likes').value   = b.min_likes ?? 10;
-  document.getElementById('tumblr-min-notes').value    = t.min_notes ?? 5;
-  document.getElementById('instagram-min-likes').value = ig.min_likes ?? 100;
+  document.getElementById('reddit-min-karma').value       = r.min_karma       ?? 100;
+  document.getElementById('bluesky-min-likes').value      = b.min_likes       ?? 10;
+  document.getElementById('tumblr-min-notes').value       = t.min_notes       ?? 5;
+  document.getElementById('instagram-min-likes').value    = ig.min_likes      ?? 100;
+  document.getElementById('mastodon-min-favorites').value = ms.min_favorites  ?? 10;
 
   populateEntries('reddit',    r.subreddits);
   populateEntries('bluesky',   b.accounts);
   populateEntries('tumblr',    t.blogs);
   populateEntries('instagram', ig.accounts);
+  populateEntries('mastodon',  ms.accounts);
+
+  _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
+                (t.blogs||[]).length + (ig.accounts||[]).length + (ms.accounts||[]).length > 0;
+  updateHomeCta();
 }
 
-async function saveAccounts() {
+async function saveSources() {
   var data = {
     reddit: {
       min_karma:  parseInt(document.getElementById('reddit-min-karma').value) || 100,
@@ -373,11 +521,15 @@ async function saveAccounts() {
       min_likes: parseInt(document.getElementById('instagram-min-likes').value) || 100,
       accounts:  collectEntries('instagram'),
     },
+    mastodon: {
+      min_favorites: parseInt(document.getElementById('mastodon-min-favorites').value) || 10,
+      accounts:      collectEntries('mastodon'),
+    },
   };
 
   try {
     await api('POST', '/api/accounts', data);
-    showToast('Accounts saved');
+    showToast('Sources saved');
   } catch (e) {
     showToast(e.message, 'error');
   }
@@ -394,41 +546,59 @@ async function loadSettings() {
     return;
   }
 
-  document.getElementById('setting-data-dir').value     = data.data_dir     || 'data';
-  document.getElementById('setting-schedule-time').value = data.schedule_time || '09:00';
-
-  var daySelect = document.getElementById('setting-schedule-day');
-  for (var i = 0; i < daySelect.options.length; i++) {
-    if (daySelect.options[i].value === data.schedule_day) {
-      daySelect.options[i].selected = true;
-      break;
-    }
-  }
+  document.getElementById('setting-data-dir').value        = data.data_dir      || 'data';
+  document.getElementById('setting-schedule-time').value   = data.schedule_time  || '09:00';
+  document.getElementById('setting-start-fullscreen').checked =
+    (data.start_fullscreen === undefined) ? true : !!data.start_fullscreen;
 }
 
 function getSettingsFromForm() {
   return {
-    data_dir:      document.getElementById('setting-data-dir').value.trim(),
-    schedule_day:  document.getElementById('setting-schedule-day').value,
-    schedule_time: document.getElementById('setting-schedule-time').value,
+    data_dir:         document.getElementById('setting-data-dir').value.trim(),
+    schedule_time:    document.getElementById('setting-schedule-time').value,
+    start_fullscreen: document.getElementById('setting-start-fullscreen').checked,
   };
+}
+
+// ── Generate report ───────────────────────────────────────────────────────────
+
+async function generateReport() {
+  var btn = document.getElementById('btn-generate');
+  var orig = btn.textContent;
+  btn.textContent = 'Fetching\u2026';
+  btn.disabled = true;
+  try {
+    var res = await api('POST', '/api/run-now');
+    showToast(res.msg || 'Fetch started');
+    // Refresh report list after a delay (fetching takes time)
+    setTimeout(loadReports, 15000);
+    setTimeout(loadReports, 45000);
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
 }
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
 
-  // Nav buttons
+  // Nav buttons with data-view
   document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
     btn.onclick = function () {
       showView(btn.dataset.view);
-      if (btn.dataset.view === 'accounts') loadAccounts();
+      if (btn.dataset.view === 'sources')  loadSources();
       if (btn.dataset.view === 'settings') loadSettings();
     };
   });
 
-  // Accounts save
-  document.getElementById('btn-save-accounts').onclick = saveAccounts;
+  // Generate report button
+  document.getElementById('btn-generate').onclick = generateReport;
+
+  // Sources save
+  document.getElementById('btn-save-sources').onclick = saveSources;
 
   // Settings save
   document.getElementById('btn-save-settings').onclick = async function () {
@@ -461,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
-  // Run Now — with loading state
+  // Run Now (in Settings panel)
   document.getElementById('btn-run-now').onclick = async function () {
     var btn = document.getElementById('btn-run-now');
     var origText = btn.textContent;
@@ -479,9 +649,36 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
-  // Viewer back button
-  document.getElementById('viewer-back').onclick = window.viewerBack;
+  // Home CTA click handlers
+  document.getElementById('home-no-sources').addEventListener('click', function () {
+    showView('sources');
+    loadSources();
+  });
+  document.getElementById('home-has-sources').addEventListener('click', function () {
+    var first = document.querySelector('.report-item');
+    if (first) {
+      first.click();
+    } else {
+      showToast('No reports yet — click Generate Report to fetch now');
+    }
+  });
 
   // Initial data load
   loadReports();
+
+  // Seed _hasSources for the home CTA without showing the Sources view
+  api('GET', '/api/accounts').then(function (data) {
+    var r  = data.reddit    || {};
+    var b  = data.bluesky   || {};
+    var t  = data.tumblr    || {};
+    var ig = data.instagram || {};
+    var ms = data.mastodon  || {};
+    _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
+                  (t.blogs||[]).length + (ig.accounts||[]).length + (ms.accounts||[]).length > 0;
+    updateHomeCta();
+  }).catch(function () {});
+
+  // Poll for in-progress fetch (Task Scheduler may fire before GUI opens)
+  pollFetchStatus();
+  setInterval(pollFetchStatus, 5000);
 });

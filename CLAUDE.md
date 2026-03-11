@@ -1,142 +1,141 @@
-# CLAUDE.md
+# Weekly Fetch — Project Guide for Claude
 
-This file provides guidance to Claude Code when working with this repository.
+## What is this?
 
-## Project overview
-
-A personal Windows app that fetches top posts from Reddit, Bluesky, Tumblr, and Instagram on a schedule, stores them in SQLite, and presents them in a native flashcard-style viewer (pywebview + FastAPI + Edge WebView2).
-
-Two entry points:
-
-| Script | Purpose |
-|--------|---------|
-| `app.py` | Opens the native app window. Run this to use the app. |
-| `src/main.py` | Headless fetch script. Windows Task Scheduler fires this silently. |
-
-## Setup
-
-```bash
-# Install deps and create .venv (uv handles everything)
-uv sync
-
-# Open the app
-uv run python app.py
-
-# Register the Windows scheduled task
-uv run python install.py
-
-# Type-check
-uv run ty check src/ app.py install.py
-
-# Build distributable .exe (requires dev deps)
-uv sync --group dev
-uv run pyinstaller WeeklyFetch.spec
-# Output: dist/WeeklyFetch/WeeklyFetch.exe
-```
-
-Requires Python 3.13+. Uses `uv` for package management and `ty` for type checking.
-
-## Distribution
-
-PyInstaller builds a standalone `.exe` in `dist/WeeklyFetch/`. Users unzip and double-click — no Python required.
-
-- `WeeklyFetch.exe` — opens the app window
-- `WeeklyFetch.exe --fetch` — headless fetch (used by Task Scheduler)
-
-GitHub Releases are automated: push a tag like `v1.0.0` and the workflow builds + uploads a zip.
+Weekly Fetch is a Windows desktop app (pywebview + FastAPI) that fetches top posts from Reddit, Bluesky, Tumblr, Instagram, and Mastodon on a user-defined schedule, then presents them as a distraction-free flashcard digest.
 
 ## Architecture
 
 ```
-app.py              ← pywebview + uvicorn entry point (also: app.py --fetch for headless)
-WeeklyFetch.spec    ← PyInstaller build configuration
-install.py          ← register Windows scheduled task
+app.py            ← Entry point. Starts uvicorn in a thread, opens pywebview.
+                    app.py --fetch  → headless mode used by Task Scheduler.
+WeeklyFetch.spec  ← PyInstaller build spec → dist/WeeklyFetch/WeeklyFetch.exe
 src/
-  server.py         ← FastAPI routes + serves ui/ static files
-  db.py             ← SQLite helpers (init_db, save_posts, get_digest, save_note)
-  notify.py         ← winotify toast notification
-  config.py         ← BASE_DIR, BUNDLE_DIR, load_settings(), save_settings(), load_sources()
-  main.py           ← headless fetch: fetch → save to DB → toast
-  fetch.py          ← Reddit JSON API fetcher
-  fetch_bluesky.py  ← Bluesky fetcher
-  fetch_tumblr.py   ← Tumblr fetcher
-  fetch_instagram.py← Instagram fetcher (instaloader)
-  schedule.py       ← is_due(), current_day_tag(), schedule_label(), state I/O
-
-ui/                 ← web frontend (served by FastAPI at /static/)
-  index.html        ← app shell: left nav + views + toast container + viewer overlay
-  app.js            ← SPA routing, API calls, toast notifications
-  digest.js         ← flashcard viewer; initDigestViewer(posts, weekTag) function
-  digest.css        ← all styles: design tokens + app-shell + viewer
-
-accounts.json       ← platform account lists (reddit subreddits, bluesky handles, etc.)
-settings.json       ← data_dir, schedule_day, schedule_time
-data/digests.db     ← SQLite: posts table + notes table (gitignored)
-.github/workflows/  ← release.yml: build .exe on tag push
+  server.py       ← FastAPI app (create_app). API routes + static file serving.
+  db.py           ← SQLite helpers. Database: digests.db.
+  notify.py       ← winotify Windows toast notifications.
+  config.py       ← BASE_DIR, BUNDLE_DIR, POST_LIMIT, Source dataclass,
+                    load_settings(), save_settings(), load_sources().
+  fetch/          ← Per-platform fetcher subpackage:
+    reddit.py     ← fetch_subreddit(name, time_filter, progress, min_karma)
+    bluesky.py    ← fetch_bluesky(name, progress, min_likes)
+    tumblr.py     ← fetch_tumblr(name, progress, min_notes)
+    instagram.py  ← fetch_instagram(name, progress, min_likes)
+    mastodon.py   ← fetch_mastodon(name, progress, min_favorites)
+  main.py         ← Headless fetch orchestrator called by Task Scheduler.
+                    Uses tqdm progress bar. Writes fetch.lock while running.
+  schedule.py     ← is_due(), current_day_tag(), load_state(), save_state(),
+                    mark_fetched(), reddit_time_filter(), schedule_label().
+ui/               ← Single-page web frontend served by FastAPI at /static/*.
+  index.html      ← App shell: custom titlebar, sidebar, views, viewer overlay.
+  app.js          ← SPA routing, Sources/Settings forms, report list.
+  digest.js       ← Flashcard viewer (initDigestViewer). Keyboard shortcuts.
+  digest.css      ← All styles. Design-token based.
+settings.json     ← { data_dir, schedule_time, start_fullscreen }
+accounts.json     ← Platform source lists with per-entry schedule + threshold.
+last_fetch.json   ← State: maps "platform/name" → ISO datetime of last fetch.
+data/digests.db   ← SQLite (reports + notes).
+fetch.lock        ← Temporary lock file present while a fetch is running.
+.github/workflows/release.yml ← Builds .exe on v* tag push.
 ```
 
-## Data flow
+## Key facts
 
+- **Single source of truth:** SQLite (`digests.db`). No standalone HTML files.
+- **Day-based report tags:** `"2026-03-10"` — one report per fetch run.
+- **BASE_DIR:** directory of the exe (frozen) or repo root (dev).
+- **BUNDLE_DIR:** sys._MEIPASS (frozen) or repo root (dev) — for `ui/` assets.
+- **Frameless window:** `app.py` opens pywebview with `frameless=True`.
+  The custom title bar uses `-webkit-app-region: drag` (works in Edge WebView2).
+  Window controls (min/max/close) call Python via `window.pywebview.api.*`.
+- **venv has no pip by default** — use `python -m ensurepip` first.
+- **Task Scheduler task name:** `WeeklyFetchDigest`
+- **fetch.lock:** created by `main.py` at start, deleted on finish. Used by
+  `/api/fetch-status` to show a "generating" indicator in the UI.
+- **POST_LIMIT = 20** — max posts fetched per Reddit source.
+- **`start_fullscreen`** — boolean setting; if true, window opens maximized.
+
+## Source dataclass (src/config.py)
+
+```python
+@dataclass
+class Source:
+    platform:  str   # "reddit" | "bluesky" | "tumblr" | "instagram" | "mastodon"
+    name:      str   # subreddit, handle, blog, username, or "handle@instance"
+    schedule:  dict  # e.g. {"every_weekday": "Saturday"}
+    threshold: int   # min_karma / min_likes / min_notes / min_favorites
 ```
-Task Scheduler → src/main.py
-  fetch posts → save to data/digests.db → toast notification
 
-User runs app.py:
-  → FastAPI starts on random localhost port
-  → pywebview opens Edge WebView2 window → loads http://localhost:{port}
-  → sidebar lists day tags from DB
-  → click a day → flashcard viewer renders posts from DB
-  → edit a note → saved to DB via POST /api/reports/{tag}/notes/{post_id}
-  → Settings → Install Task → schtasks registers weekly job
+`load_sources()` in `config.py` parses `accounts.json` into a flat `list[Source]`.
+
+## Schedule format (accounts.json)
+
+Each source entry has a `schedule` dict. `schedule.py` supports these keys:
+
+```json
+{ "every_weekday": "Saturday" }   // every named weekday
+{ "every_n_days": 7 }             // every N days
+{ "every_n_weeks": 2 }            // every N weeks
+{ "every_n_months": 1 }           // every N months
+{ "day_n_of_month": 1 }           // day N of each month
 ```
 
-## Key source files
+State (last fetch times) is stored in `last_fetch.json` as `"platform/name" → ISO datetime`.
 
-### `src/config.py`
-- `BASE_DIR` — user data root (exe dir when frozen, repo root when source)
-- `BUNDLE_DIR` — bundled assets root (`sys._MEIPASS` when frozen, repo root when source)
-- `load_settings()` / `save_settings()` — read/write `settings.json`
-- `load_sources()` — parse `accounts.json` into `list[Source]`
+The UI (app.js) maps the first three types to: `weekday`, `ndays`, `monthday`.
 
-### `src/db.py` — SQLite schema
-```sql
-posts  (id, week_tag, platform, source_name, fetched_at, title, link UNIQUE,
-        score, post_type, content_json, comments_json)
-notes  (post_id, week_tag, note_text, updated_at)  PRIMARY KEY (post_id, week_tag)
+## Accounts.json platform keys
+
+```json
+{
+  "reddit":   { "min_karma":     100, "subreddits": [...] },
+  "bluesky":  { "min_likes":      50, "accounts":   [...] },
+  "tumblr":   { "min_notes":       5, "blogs":      [...] },
+  "instagram":{ "min_likes":     100, "accounts":   [...] },
+  "mastodon": { "min_favorites":  10, "accounts":   [...] }
+}
 ```
-Posts are upserted on `link` (deduplication). Notes are deleted when text is blank.
 
-### `src/schedule.py`
-- `is_due(source, state, now)` — checks fetch cadence against `last_fetch.json`
-- Schedule dict keys: `every_weekday`, `every_n_days`, `every_n_weeks`, `every_n_months`, `day_n_of_month`
+## API routes (src/server.py)
 
-### `src/server.py` — API routes
 ```
 GET  /api/reports                → list day tags
-GET  /api/reports/{tag}          → posts + notes for a day
-POST /api/reports/{tag}/notes/{id} → upsert note
-GET/POST /api/accounts           → accounts.json
-GET/POST /api/settings           → settings.json
-POST /api/install-task           → run install.py (registers schtasks)
-POST /api/remove-task            → schtasks /Delete
-POST /api/run-now                → run src/main.py in a background thread
+GET  /api/reports/{tag}          → posts + notes for that day
+POST /api/reports/{tag}/notes/{id} → save note text
+
+GET/POST /api/accounts           → read/write accounts.json
+GET/POST /api/settings           → read/write settings.json
+
+POST /api/install-task           → register Windows scheduled task
+POST /api/remove-task            → delete scheduled task
+GET  /api/fetch-status           → { "running": bool } (based on fetch.lock)
+POST /api/run-now                → trigger a fetch in a background thread
 ```
 
-### `ui/digest.js`
-Flashcard viewer for the app.
-- Exported as `window.initDigestViewer(posts, weekTag)` — data passed as argument
-- Notes pre-populated from `post.note` (DB), then synced to API on blur (debounced 800 ms)
-- `localStorage` used as session cache; API is the durable store
+## UI design tokens (digest.css)
 
-### `install.py`
-Reads `schedule_day`/`schedule_time` from `settings.json`. Task name: `WeeklyFetchDigest`.
-Script path: `src/main.py` (relative to project root).
+- Surfaces: `--bg-deep`, `--bg-surface`, `--bg-elevated`, `--bg-hover`
+- Text: `--text-1` through `--text-4` (4 opacity levels)
+- Accent: `--accent` (#6366f1 indigo), `--accent-light`, `--accent-surface`
+- Platforms: `--reddit`, `--bluesky`, `--tumblr`, `--instagram`
+- Radius: `--r-sm` / `--r-md` / `--r-lg` / `--r-full`
+- Title bar height: `--titlebar-h: 36px`
 
-## Key constants (`src/config.py`)
+## Viewer keyboard shortcuts
 
-| Constant | Default | Purpose |
-|----------|---------|---------|
-| `POST_LIMIT` | 20 | Max posts fetched per source |
-| `MIN_KARMA` | 100 | Default minimum score threshold |
-| `SETTINGS_PATH` | `settings.json` | App settings |
-| `ACCOUNTS_PATH` | `accounts.json` | Platform account lists |
+`h`/`←` prev card · `l`/`→` next card · `j`/`↓` scroll down · `k`/`↑` scroll up
+`c` toggle comments · `Ctrl+N` focus notes sidebar
+
+## Distribution
+
+PyInstaller via `WeeklyFetch.spec` → `dist/WeeklyFetch/WeeklyFetch.exe`.
+GitHub Actions builds on `v*` tag push and creates a release with a zip.
+
+## Running in dev
+
+```bash
+python -m ensurepip          # if venv has no pip
+pip install -r requirements.txt
+python app.py                # opens the pywebview window
+python app.py --fetch        # headless fetch (no window)
+```
