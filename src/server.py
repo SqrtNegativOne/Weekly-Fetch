@@ -7,9 +7,13 @@ Route summary:
   GET  /                           → serve ui/index.html
   GET  /static/{file}              → serve ui/ files
 
-  GET  /api/reports                → list week tags from DB
-  GET  /api/reports/{tag}          → all posts + notes for a week
-  POST /api/reports/{tag}/notes/{id} → save a note
+  GET  /api/artifacts/pending      → all pending artifacts
+  GET  /api/artifacts/archived     → paginated archived artifacts
+  GET  /api/artifacts/{id}         → single artifact
+  POST /api/artifacts/{id}/archive → archive an artifact
+  POST /api/artifacts/{id}/unarchive → unarchive an artifact
+  POST /api/artifacts/{id}/note    → save note text
+  POST /api/artifacts/{id}/todo    → save todo text
 
   GET  /api/accounts               → read accounts.json
   POST /api/accounts               → write accounts.json
@@ -38,7 +42,8 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
-from db import get_digest, init_db, list_tags, save_note
+from db import (archive_artifact, get_archived, get_artifact, get_pending,
+                init_db, save_note, save_todo, unarchive_artifact)
 from log import logger
 
 _UI = BUNDLE_DIR / "ui"
@@ -65,24 +70,53 @@ def create_app() -> FastAPI:
     def serve_index():
         return FileResponse(str(_UI / "index.html"))
 
-    # ── Reports ───────────────────────────────────────────────────────────────
-    @app.get("/api/reports")
-    def list_reports() -> list:
+    # ── Artifacts ──────────────────────────────────────────────────────────────
+    @app.get("/api/artifacts/pending")
+    def list_pending() -> list:
         db = _db_path()
         init_db(db)
-        return list_tags(db)
+        return get_pending(db)
 
-    @app.get("/api/reports/{tag}")
-    def get_report(tag: str) -> list:
+    @app.get("/api/artifacts/archived")
+    def list_archived(search: str = "", platform: str = "",
+                      source: str = "", limit: int = 50,
+                      offset: int = 0) -> list:
         db = _db_path()
-        if not db.exists():
-            return []
-        return get_digest(db, tag)
+        init_db(db)
+        return get_archived(db,
+                            search=search or None,
+                            platform=platform or None,
+                            source=source or None,
+                            limit=limit, offset=offset)
 
-    @app.post("/api/reports/{tag}/notes/{post_id}")
-    async def update_note(tag: str, post_id: int, request: Request) -> dict:
+    @app.get("/api/artifacts/{artifact_id}")
+    def read_artifact(artifact_id: int) -> dict:
+        db = _db_path()
+        result = get_artifact(db, artifact_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        return result
+
+    @app.post("/api/artifacts/{artifact_id}/archive")
+    def do_archive(artifact_id: int) -> dict:
+        archive_artifact(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/artifacts/{artifact_id}/unarchive")
+    def do_unarchive(artifact_id: int) -> dict:
+        unarchive_artifact(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/artifacts/{artifact_id}/note")
+    async def update_note(artifact_id: int, request: Request) -> dict:
         body = await request.json()
-        save_note(_db_path(), post_id, tag, body.get("text", ""))
+        save_note(_db_path(), artifact_id, body.get("text", ""))
+        return {"ok": True}
+
+    @app.post("/api/artifacts/{artifact_id}/todo")
+    async def update_todo(artifact_id: int, request: Request) -> dict:
+        body = await request.json()
+        save_todo(_db_path(), artifact_id, body.get("text", ""))
         return {"ok": True}
 
     # ── Accounts ──────────────────────────────────────────────────────────────
@@ -175,12 +209,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/fetch-errors")
     def fetch_errors() -> list:
-        """Return any errors from the last fetch run, then clear them.
-
-        main.py writes errors to fetch_errors.json while it runs.
-        This endpoint reads that file and deletes it so each error is
-        shown to the user exactly once.
-        """
+        """Return any errors from the last fetch run, then clear them."""
         errors_path = BASE_DIR / "fetch_errors.json"
         if not errors_path.exists():
             return []

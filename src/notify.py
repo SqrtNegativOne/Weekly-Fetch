@@ -5,14 +5,14 @@ the notification is silently skipped.
 """
 
 
-def notify_digest_ready(day_tag: str) -> None:
-    """Show a Windows 10/11 toast: 'New digest ready · 2026-03-10'."""
+def notify_new_artifacts(count: int) -> None:
+    """Show a Windows 10/11 toast: 'New artifacts ready'."""
     try:
         from winotify import Notification
         Notification(
             app_id="Weekly Fetch",
-            title=f"New digest ready \u00b7 {day_tag}",
-            msg="Open the app to read your digest",
+            title="New artifacts ready",
+            msg=f"{count} new item{'s' if count != 1 else ''} to review",
         ).show()
     except Exception:
         pass  # winotify not installed, or Windows notification service unavailable

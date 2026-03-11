@@ -148,6 +148,7 @@ def main():
         min_size=(800, 600),
         frameless=True,
         easy_drag=False,
+        text_select=True,
         js_api=api,
     )
 

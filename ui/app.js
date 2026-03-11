@@ -2,42 +2,20 @@
  * app.js — SPA routing and API integration for Weekly Fetch.
  *
  * Responsibilities:
- *   - Populate the report list sidebar from /api/reports
- *   - Show/hide views (home, sources, settings, about, viewer overlay)
- *   - Load a report and hand off to initDigestViewer()
+ *   - Show/hide views (home, sources, archive, settings, about)
+ *   - Load pending artifacts and hand off to initDigestViewer()
+ *   - Archive page: search, filter, pagination
  *   - Sources: load from / save to /api/accounts
  *   - Settings: load from / save to /api/settings
  *   - Task buttons: install, remove, run-now
  *   - Toast notifications for user feedback
  */
 
-// ── Home CTA state ────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 
-var _hasSources  = false;
-var _hasReports  = false;
 var _fetchRunning = false;
 
-function updateHomeCta() {
-  var noSrc    = document.getElementById('home-no-sources');
-  var hasSrc   = document.getElementById('home-has-sources');
-  var readyCta = document.getElementById('home-ready');
-  var fetching = document.getElementById('home-fetching');
-
-  // CTA area: three states based on sources + reports
-  noSrc.style.display  = 'none';
-  hasSrc.style.display = 'none';
-  readyCta.style.display = 'none';
-  if (_hasReports) {
-    readyCta.style.display = 'flex';
-  } else if (_hasSources) {
-    hasSrc.style.display = 'flex';
-  } else {
-    noSrc.style.display = 'flex';
-  }
-
-  // Progress panel: visible whenever a fetch is running, overlays the bottom
-  fetching.style.display = _fetchRunning ? 'flex' : 'none';
-}
+// ── Fetch status polling ─────────────────────────────────────────────────────
 
 async function pollFetchStatus() {
   var wasRunning = _fetchRunning;
@@ -49,12 +27,17 @@ async function pollFetchStatus() {
     _fetchRunning = false;
     updateFetchProgress(null);
   }
-  // Fetch just finished — refresh the report list and surface any errors
+
+  var fetchingEl = document.getElementById('home-fetching');
+  if (fetchingEl) {
+    fetchingEl.style.display = _fetchRunning ? 'flex' : 'none';
+  }
+
+  // Fetch just finished — reload pending artifacts and surface any errors
   if (wasRunning && !_fetchRunning) {
-    loadReports();
+    loadPending();
     showFetchErrors();
   }
-  updateHomeCta();
 }
 
 function updateFetchProgress(progress) {
@@ -99,7 +82,7 @@ async function showFetchErrors() {
       showToast(msg, 'error');
     });
   } catch (e) {
-    // If the endpoint itself fails, silently ignore — it's not critical
+    // silently ignore
   }
 }
 
@@ -135,7 +118,7 @@ function showToast(msg, type) {
 
 // ── View routing ──────────────────────────────────────────────────────────────
 
-var VIEWS = ['home', 'sources', 'settings', 'about'];
+var VIEWS = ['home', 'sources', 'archive', 'settings', 'about'];
 
 function showView(name) {
   VIEWS.forEach(function (v) {
@@ -145,165 +128,122 @@ function showView(name) {
   document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
     btn.classList.toggle('active', btn.dataset.view === name);
   });
-  if (name !== 'home') {
-    document.querySelectorAll('.report-item').forEach(function (el) {
-      el.classList.remove('active');
-    });
-  }
-  closeViewer();
 }
 
-// ── Report list ───────────────────────────────────────────────────────────────
+// ── Pending artifacts (Home view) ─────────────────────────────────────────────
 
-function formatTag(tag) {
-  // Date-based tags: "2026-03-10" → { day: "10", month: "March", year: "2026" }
-  var m = tag.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) {
-    var months = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
-    var month = months[parseInt(m[2], 10) - 1] || m[2];
-    return { day: String(parseInt(m[3], 10)), month: month, year: m[1] };
-  }
-  // Legacy week tags: "2026-W10" → { day: "W10", month: "", year: "2026" }
-  var w = tag.match(/^(\d{4})-W(\d+)$/);
-  if (w) return { day: 'W' + parseInt(w[2]), month: '', year: w[1] };
-  return { day: tag, month: '', year: '' };
-}
-
-async function loadReports() {
-  var tags;
+async function loadPending() {
+  var artifacts;
   try {
-    tags = await api('GET', '/api/reports');
+    artifacts = await api('GET', '/api/artifacts/pending');
   } catch (e) {
-    console.error('Failed to load reports:', e);
+    console.error('Failed to load pending artifacts:', e);
     return;
   }
 
-  var listEl  = document.getElementById('report-list');
-  var emptyEl = document.getElementById('report-list-empty');
+  var viewerEl = document.getElementById('viewer-container');
+  var emptyEl  = document.getElementById('home-empty');
 
-  if (!tags || tags.length === 0) {
-    _hasReports = false;
-    updateHomeCta();
-    emptyEl.style.display = '';
+  if (!artifacts || artifacts.length === 0) {
+    viewerEl.style.display = 'none';
+    emptyEl.style.display = 'flex';
+  } else {
+    viewerEl.style.display = '';
+    emptyEl.style.display = 'none';
+    window.initDigestViewer(artifacts);
+  }
+}
+
+// ── Archive page ──────────────────────────────────────────────────────────────
+
+var _archiveOffset = 0;
+var _archiveSearch = '';
+var _archivePlatform = '';
+
+async function loadArchive(search, platform, offset, append) {
+  _archiveSearch   = search || '';
+  _archivePlatform = platform || '';
+  _archiveOffset   = offset || 0;
+
+  var artifacts;
+  try {
+    var params = new URLSearchParams();
+    if (_archiveSearch) params.set('search', _archiveSearch);
+    if (_archivePlatform) params.set('platform', _archivePlatform);
+    params.set('limit', '50');
+    params.set('offset', String(_archiveOffset));
+    artifacts = await api('GET', '/api/artifacts/archived?' + params.toString());
+  } catch (e) {
+    showToast('Failed to load archive: ' + e.message, 'error');
     return;
   }
 
-  _hasReports = true;
-  updateHomeCta();
-  emptyEl.style.display = 'none';
+  var listEl = document.getElementById('archive-list');
+  var moreBtn = document.getElementById('btn-archive-more');
 
-  tags.forEach(function (tag) {
-    if (listEl.querySelector('[data-tag="' + tag + '"]')) return;
-    var btn = document.createElement('button');
-    btn.className = 'report-item';
-    btn.dataset.tag = tag;
+  if (!append) {
+    listEl.innerHTML = '';
+  }
 
-    var info = formatTag(tag);
-    if (info.year) {
-      btn.innerHTML =
-        '<span class="report-day">' + info.day + '</span>' +
-        '<span class="report-month">' + info.month + '</span>' +
-        '<span class="report-year">' + info.year + '</span>';
-    } else {
-      btn.textContent = tag;
+  if (!artifacts || artifacts.length === 0) {
+    if (!append) {
+      listEl.innerHTML = '<div class="archive-empty">No archived artifacts found.</div>';
+    }
+    moreBtn.style.display = 'none';
+    return;
+  }
+
+  artifacts.forEach(function (a) {
+    var row = document.createElement('div');
+    row.className = 'archive-item';
+
+    var platformClass = a.platform ? 'archive-item-' + a.platform : '';
+    row.classList.add(platformClass);
+
+    var notePreview = '';
+    if (a.note && a.note.trim()) {
+      var preview = a.note.replace(/^•\s*/gm, '').trim();
+      if (preview.length > 80) preview = preview.substring(0, 80) + '…';
+      notePreview = '<div class="archive-item-note">' + escHtml(preview) + '</div>';
     }
 
-    btn.onclick = function () { openReport(tag, btn); };
-    listEl.appendChild(btn);
-  });
-}
+    var archivedDate = '';
+    if (a.archived_at) {
+      var d = new Date(a.archived_at);
+      archivedDate = d.toLocaleDateString();
+    }
 
-async function openReport(tag, btnEl) {
-  document.querySelectorAll('.report-item').forEach(function (el) {
-    el.classList.remove('active');
-  });
-  if (btnEl) btnEl.classList.add('active');
+    row.innerHTML =
+      '<div class="archive-item-title">' +
+        '<a href="' + escHtml(a.link || '#') + '" target="_blank" rel="noopener">' +
+          escHtml(a.title || '[Post]') +
+        '</a>' +
+      '</div>' +
+      '<div class="archive-item-meta">' +
+        '<span class="platform-badge pb-' + (a.platform || 'reddit') + '">' +
+          escHtml(a.platform || 'reddit') +
+        '</span> ' +
+        '<span>' + escHtml(a.source_name || '') + '</span>' +
+        '<span class="archive-item-score">' + (a.score || 0).toLocaleString() + ' pts</span>' +
+        (archivedDate ? '<span class="archive-item-date">' + archivedDate + '</span>' : '') +
+      '</div>' +
+      notePreview;
 
-  showView('home');
-
-  var posts;
-  try {
-    posts = await api('GET', '/api/reports/' + encodeURIComponent(tag));
-  } catch (e) {
-    showToast('Failed to load report: ' + e.message, 'error');
-    return;
-  }
-
-  if (!posts || posts.length === 0) {
-    showToast('No posts found for ' + tag, 'error');
-    return;
-  }
-
-  var subMap   = {};
-  var postList = [];
-
-  posts.forEach(function (p) {
-    var sub = p.subreddit || 'unknown';
-    if (!subMap[sub]) subMap[sub] = { count: 0, platform: p.platform };
-    subMap[sub].count++;
-    postList.push(p);
+    listEl.appendChild(row);
   });
 
-  var subreddits = Object.entries(subMap).map(function (entry) {
-    return {
-      name:     entry[0],
-      platform: entry[1].platform,
-      count:    entry[1].count,
-      period:   '',
-    };
-  });
-
-  var now = new Date();
-  var generated = now.getFullYear() + '-' +
-    String(now.getMonth() + 1).padStart(2, '0') + '-' +
-    String(now.getDate()).padStart(2, '0');
-
-  var allPosts = [
-    {
-      type:        'cover',
-      title:       'Digest',
-      link:        '__cover__',
-      week_tag:    tag,
-      generated:   generated,
-      subreddits:  subreddits,
-      total_posts: postList.length,
-    },
-    ...postList,
-    { type: 'notes_summary', title: 'Your Notes', link: '__notes__' },
-  ];
-
-  openViewer(allPosts, tag);
+  // Show "Load more" if we got a full page
+  moreBtn.style.display = artifacts.length >= 50 ? '' : 'none';
 }
 
-// ── Viewer overlay ────────────────────────────────────────────────────────────
-
-function openViewer(posts, weekTag) {
-  var overlay = document.getElementById('viewer-overlay');
-  // Cancel any in-progress close animation before opening
-  overlay.classList.remove('leaving');
-  overlay.classList.add('active');
-  window.initDigestViewer(posts, weekTag);
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
-function closeViewer() {
-  var overlay = document.getElementById('viewer-overlay');
-  if (!overlay.classList.contains('active')) return;
-  overlay.classList.add('leaving');
-  setTimeout(function () {
-    overlay.classList.remove('active', 'leaving');
-  }, 220);
-}
-
-window.viewerBack = function () {
-  closeViewer();
-  showView('home');
-  updateHomeCta();
-};
 
 // ── Sources (was: Accounts) ───────────────────────────────────────────────────
 
-// Platform config: maps platform → { listKey, thresholdKey, namePlaceholder }
 var PLATFORM_CONFIG = {
   reddit:    { listKey: 'subreddits', thresholdKey: 'karma',    globalKey: 'min_karma', namePlaceholder: 'MachineLearning' },
   bluesky:   { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'jay.bsky.social' },
@@ -314,18 +254,6 @@ var PLATFORM_CONFIG = {
 };
 
 var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-// ── Schedule data ↔ display ───────────────────────────────────────────────────
-//
-// Backend key names (schedule.py):
-//   every_weekday  : "Saturday"   → fetch every named weekday
-//   every_n_days   : N            → fetch every N days
-//   day_n_of_month : N, every_n_months implied as 1  (schedule.py just checks day_n_of_month)
-//
-// We map these to three UI types:
-//   'weekday'   → { every_weekday: "Monday" }
-//   'ndays'     → { every_n_days: N }
-//   'monthday'  → { day_n_of_month: N }
 
 function scheduleToDisplay(sched) {
   if (!sched) return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
@@ -342,12 +270,6 @@ function displayToSchedule(type, weekday, n, day) {
   return { every_weekday: 'Saturday' };
 }
 
-// ── Entry row builder ─────────────────────────────────────────────────────────
-//
-// Each row is two lines:
-//   Top:    [name input ···················] [× remove]
-//   Bottom: [type▼] [weekday▼ | N days | day N] [threshold field]
-
 function createEntryRow(platform, entry) {
   var name = typeof entry === 'string' ? entry : (entry.name || '');
   var sched = typeof entry === 'object' ? entry.schedule : null;
@@ -358,13 +280,11 @@ function createEntryRow(platform, entry) {
     threshVal = String(entry[cfg.thresholdKey]);
   }
 
-  var ds = scheduleToDisplay(sched);  // { type, weekday, n, day }
+  var ds = scheduleToDisplay(sched);
 
-  // ── Outer row ──
   var row = document.createElement('div');
   row.className = 'entry-row';
 
-  // ── Top line: name + remove ──
   var topLine = document.createElement('div');
   topLine.className = 'entry-row-top';
 
@@ -384,17 +304,15 @@ function createEntryRow(platform, entry) {
   topLine.appendChild(nameInput);
   topLine.appendChild(removeBtn);
 
-  // ── Bottom line: schedule type + params + threshold ──
   var botLine = document.createElement('div');
   botLine.className = 'entry-row-bot';
 
-  // Schedule type selector
   var typeSelect = document.createElement('select');
   typeSelect.className = 'entry-sched-type';
   [
     { value: 'weekday',  label: 'Every' },
-    { value: 'ndays',    label: 'Every … days' },
-    { value: 'monthday', label: 'Day … of month' },
+    { value: 'ndays',    label: 'Every \u2026 days' },
+    { value: 'monthday', label: 'Day \u2026 of month' },
   ].forEach(function (opt) {
     var o = document.createElement('option');
     o.value = opt.value;
@@ -403,7 +321,6 @@ function createEntryRow(platform, entry) {
   });
   typeSelect.value = ds.type;
 
-  // Param area — changes based on type selection
   var paramArea = document.createElement('div');
   paramArea.className = 'entry-sched-params';
 
@@ -440,7 +357,7 @@ function createEntryRow(platform, entry) {
       inp2.className = 'entry-param-num';
       inp2.dataset.role = 'day';
       inp2.value = day || 1;
-      inp2.title = 'Day of the month (1–31)';
+      inp2.title = 'Day of the month (1\u201331)';
       var lbl2 = document.createElement('span');
       lbl2.className = 'entry-param-label';
       lbl2.textContent = 'of every month';
@@ -456,7 +373,6 @@ function createEntryRow(platform, entry) {
     buildParams(typeSelect.value, cur.weekday, cur.n, cur.day);
   };
 
-  // Threshold override
   var threshWrap = document.createElement('div');
   threshWrap.className = 'entry-thresh-wrap';
   var threshLabel = document.createElement('span');
@@ -564,11 +480,6 @@ async function loadSources() {
   populateEntries('instagram', ig.accounts);
   populateEntries('mastodon',  ms.accounts);
   populateEntries('twitter',   tw.accounts);
-
-  _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
-                (t.blogs||[]).length + (ig.accounts||[]).length +
-                (ms.accounts||[]).length + (tw.accounts||[]).length > 0;
-  updateHomeCta();
 }
 
 async function saveSources() {
@@ -633,27 +544,6 @@ function getSettingsFromForm() {
   };
 }
 
-// ── Generate report ───────────────────────────────────────────────────────────
-
-async function generateReport() {
-  var btn = document.getElementById('btn-generate');
-  var label = btn.querySelector('.nav-label');
-  var orig = label.textContent;
-  label.textContent = 'Fetching\u2026';
-  btn.disabled = true;
-  try {
-    var res = await api('POST', '/api/run-now');
-    showToast(res.msg || 'Fetch started');
-    // Polling will auto-refresh reports when the fetch finishes
-    pollFetchStatus();
-  } catch (e) {
-    showToast(e.message, 'error');
-  } finally {
-    label.textContent = orig;
-    btn.disabled = false;
-  }
-}
-
 // ── Initialisation ────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -664,11 +554,10 @@ document.addEventListener('DOMContentLoaded', function () {
       showView(btn.dataset.view);
       if (btn.dataset.view === 'sources')  loadSources();
       if (btn.dataset.view === 'settings') loadSettings();
+      if (btn.dataset.view === 'archive')  loadArchive('', '', 0, false);
+      if (btn.dataset.view === 'home')     loadPending();
     };
   });
-
-  // Generate report button
-  document.getElementById('btn-generate').onclick = generateReport;
 
   // Sources save
   document.getElementById('btn-save-sources').onclick = saveSources;
@@ -722,41 +611,42 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
-  // Home CTA click handlers
-  document.getElementById('home-no-sources').addEventListener('click', function () {
-    showView('sources');
-    loadSources();
-  });
-  // "Generate your first report" CTA — trigger a fetch
-  document.getElementById('home-has-sources').addEventListener('click', generateReport);
-  // "See today's Report" CTA — open the latest report
-  document.getElementById('home-ready').addEventListener('click', function () {
-    var first = document.querySelector('.report-item');
-    if (first) first.click();
-  });
+  // Archive page: search input with debounce
+  var archiveSearchEl = document.getElementById('archive-search');
+  var archiveFilterEl = document.getElementById('archive-platform-filter');
+  var _archiveSearchTimer = null;
 
-  // Activate home view + highlight nav button on startup
+  if (archiveSearchEl) {
+    archiveSearchEl.addEventListener('input', function () {
+      clearTimeout(_archiveSearchTimer);
+      _archiveSearchTimer = setTimeout(function () {
+        loadArchive(archiveSearchEl.value, archiveFilterEl.value, 0, false);
+      }, 300);
+    });
+  }
+
+  if (archiveFilterEl) {
+    archiveFilterEl.addEventListener('change', function () {
+      loadArchive(archiveSearchEl.value, archiveFilterEl.value, 0, false);
+    });
+  }
+
+  // Archive: Load More button
+  var archiveMoreBtn = document.getElementById('btn-archive-more');
+  if (archiveMoreBtn) {
+    archiveMoreBtn.onclick = function () {
+      _archiveOffset += 50;
+      loadArchive(_archiveSearch, _archivePlatform, _archiveOffset, true);
+    };
+  }
+
+  // Activate home view on startup
   showView('home');
 
-  // Initial data load
-  loadReports();
+  // Load pending artifacts
+  loadPending();
 
-  // Seed _hasSources for the home CTA without showing the Sources view
-  api('GET', '/api/accounts').then(function (data) {
-    var r  = data.reddit    || {};
-    var b  = data.bluesky   || {};
-    var t  = data.tumblr    || {};
-    var ig = data.instagram || {};
-    var ms = data.mastodon  || {};
-    var tw = data.twitter   || {};
-    _hasSources = (r.subreddits||[]).length + (b.accounts||[]).length +
-                  (t.blogs||[]).length + (ig.accounts||[]).length +
-                  (ms.accounts||[]).length + (tw.accounts||[]).length > 0;
-    updateHomeCta();
-  }).catch(function () {});
-
-  // Poll for in-progress fetch (Task Scheduler may fire before GUI opens).
-  // Poll faster (2s) while a fetch is running, slower (5s) when idle.
+  // Poll for in-progress fetch
   pollFetchStatus();
   var _pollTimer = setInterval(pollFetchStatus, 5000);
 
@@ -772,7 +662,6 @@ document.addEventListener('DOMContentLoaded', function () {
       _fastPolling = false;
     }
   }
-  // Hook into the existing poll cycle
   var _origPoll = pollFetchStatus;
   pollFetchStatus = async function () {
     await _origPoll();

@@ -1,109 +1,94 @@
-import html as html_mod
-from datetime import datetime, timedelta, timezone
-from html.parser import HTMLParser
+from datetime import datetime, timezone
 
 import feedparser
 import requests
 
 from config import HEADERS, POST_LIMIT
+from fetch.base import BaseFetcher, first_image, register
 
 
-class _FirstImageExtractor(HTMLParser):
-    """Walks an HTML string and captures the src of the very first <img>."""
-
-    def __init__(self):
-        super().__init__()
-        self.url = ""
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "img" and not self.url:
-            for name, val in attrs:
-                if name == "src" and val:
-                    self.url = val
-                    break
-
-
-def _first_image(html_text: str) -> str:
-    """Return the URL of the first image in an HTML fragment, or ''."""
-    extractor = _FirstImageExtractor()
-    extractor.feed(html_text)
-    return extractor.url
-
-
-def fetch_twitter(handle: str, progress=None, min_likes: int = 50,
-                  since: datetime | None = None,
-                  rss_url: str = "") -> list[dict]:
+@register
+class TwitterFetcher(BaseFetcher):
     """Fetch recent tweets from a Twitter/X account via an RSS feed.
 
-    Uses a Nitter-compatible RSS endpoint.  The caller builds the full URL
-    from the configured ``rss_base`` template; this function just receives it.
+    Uses a Nitter-compatible RSS endpoint. The rss_base URL is read from
+    accounts_config (accounts.json) so the caller doesn't need to pass it.
 
-    ``min_likes`` is accepted for interface consistency but **not enforced**
-    — RSS feeds don't include like counts.  The effective filter is the
-    date window (``since`` or 7-day default).
+    source.threshold (min_likes) is accepted for interface consistency but
+    NOT enforced — RSS feeds don't include like counts. The effective filter
+    is the date window (since or 7-day default).
     """
-    if not rss_url:
+
+    platform = "twitter"
+
+    def fetch_posts(self, source, progress, since: datetime | None,
+                    *, accounts_config: dict) -> list[dict]:
+        handle = source.name
+
+        # Build the RSS URL from accounts.json rss_base
+        rss_base = accounts_config.get("twitter", {}).get("rss_base", "")
+        rss_url  = f"{rss_base}/{handle}/rss" if rss_base else ""
+
+        if not rss_url:
+            if progress is not None:
+                progress.update(1)
+            raise RuntimeError(
+                f"twitter/{handle}: no rss_base configured in accounts.json — "
+                "set it to a Nitter instance URL (e.g. https://nitter.privacydev.net)"
+            )
+
+        if progress is not None:
+            progress.set_description(f"@{handle}: Twitter RSS")
+
+        resp = requests.get(rss_url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+
         if progress is not None:
             progress.update(1)
-        raise RuntimeError(
-            f"twitter/{handle}: no rss_base configured in accounts.json — "
-            "set it to a Nitter instance URL (e.g. https://nitter.privacydev.net)"
-        )
 
-    if progress is not None:
-        progress.set_description(f"@{handle}: Twitter RSS")
+        feed   = feedparser.parse(resp.text)
+        cutoff = self.compute_cutoff(since)
+        posts: list[dict] = []
 
-    resp = requests.get(rss_url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
+        for entry in feed.entries:
+            # ── Date filter ──────────────────────────────────────────────────
+            published = entry.get("published_parsed")
+            if published:
+                pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
+                if pub_dt < cutoff:
+                    continue  # RSS is chronological — no older posts follow
 
-    if progress is not None:
-        progress.update(1)
+            # ── Title ────────────────────────────────────────────────────────
+            title_raw = entry.get("title", "")
+            title     = self.make_title(title_raw, fallback="[Tweet]")
+            link      = entry.get("link", "")
 
-    feed   = feedparser.parse(resp.text)
-    cutoff = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
-    posts: list[dict] = []
+            # ── Content: prefer full content over summary ────────────────────
+            raw_html = ""
+            if entry.get("content"):
+                raw_html = entry["content"][0].get("value", "")
+            elif entry.get("summary"):
+                raw_html = entry.get("summary", "")
 
-    for entry in feed.entries:
-        # ── Date filter ──────────────────────────────────────────────────────
-        published = entry.get("published_parsed")
-        if published:
-            pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
-            if pub_dt < cutoff:
-                continue  # RSS is chronological — no older posts follow
+            img_url = first_image(raw_html)
 
-        # ── Title ────────────────────────────────────────────────────────────
-        title_raw = entry.get("title", "")
-        title     = html_mod.escape(title_raw[:120] + ("…" if len(title_raw) > 120 else ""))
-        link      = entry.get("link", "")
+            if img_url:
+                content_type = "image"
+                content      = {"url": img_url}
+            else:
+                content_type = "link"
+                content      = {"url": link}
 
-        # ── Content: prefer full content over summary ────────────────────────
-        raw_html = ""
-        if entry.get("content"):
-            raw_html = entry["content"][0].get("value", "")
-        elif entry.get("summary"):
-            raw_html = entry.get("summary", "")
+            posts.append(self.make_post(
+                title=title,
+                link=link,
+                score=0,   # RSS has no like-count field
+                content_type=content_type,
+                content=content,
+                author="@" + handle,
+            ))
 
-        img_url = _first_image(raw_html)
+            if len(posts) >= POST_LIMIT:
+                break
 
-        if img_url:
-            content_type = "image"
-            content      = {"url": img_url}
-        else:
-            content_type = "link"
-            content      = {"url": link}
-
-        posts.append({
-            "title":    title or "[Tweet]",
-            "link":     link,
-            "score":    0,   # RSS has no like-count field
-            "type":     content_type,
-            "content":  content,
-            "comments": [],
-            "platform": "twitter",
-            "author":   "@" + handle,
-        })
-
-        if len(posts) >= POST_LIMIT:
-            break
-
-    return posts
+        return posts

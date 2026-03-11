@@ -4,7 +4,7 @@ Run from the project root:
     python src/main.py
 
 This script is what Windows Task Scheduler fires on a schedule.
-It fetches posts, saves to SQLite, and shows a toast notification.
+It fetches posts, saves to SQLite as pending artifacts, and shows a toast notification.
 """
 import json
 import sys
@@ -17,20 +17,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from tqdm import tqdm
 
-from config import BASE_DIR, POST_LIMIT, load_accounts, load_settings, load_sources
-from db import init_db, save_posts
-from fetch.reddit import fetch_subreddit
-from fetch.bluesky import fetch_bluesky
-from fetch.instagram import fetch_instagram
-from fetch.mastodon import fetch_mastodon
-from fetch.tumblr import fetch_tumblr
-from fetch.twitter import fetch_twitter
+from config import BASE_DIR, load_accounts, load_settings, load_sources
+from db import init_db, save_artifacts
+# Importing each fetcher module registers it into fetch.base.FETCHERS via @register.
+import fetch.reddit
+import fetch.bluesky
+import fetch.tumblr
+import fetch.instagram
+import fetch.mastodon
+import fetch.twitter
+from fetch.base import FETCHERS
 from log import logger
-from notify import notify_digest_ready
-from schedule import (
-    current_day_tag, elapsed_time_filter, is_due, load_state, mark_fetched,
-    save_state,
-)
+from notify import notify_new_artifacts
+from schedule import current_day_tag, is_due, load_state, mark_fetched, save_state
 
 _ERRORS_PATH = BASE_DIR / "fetch_errors.json"
 _PROGRESS_PATH = BASE_DIR / "fetch_progress.json"
@@ -77,7 +76,6 @@ def main(force: bool = False):
     now     = datetime.now()
     state   = load_state()
     sources = load_sources()
-    twitter_rss_base = load_accounts().get("twitter", {}).get("rss_base", "")
 
     # Write a lock file so the GUI can show a "generating" indicator.
     lock_path = BASE_DIR / "fetch.lock"
@@ -98,12 +96,13 @@ def main(force: bool = False):
     done_list: list[str] = []
 
     try:
-        # Progress bar budget:
-        #   Reddit: (POST_LIMIT + 1) per subreddit  (1 listing req + N comment reqs)
-        #   Others: 1 per source  (single API/RSS call)
-        reddit_due = [s for s in due if s.platform == "reddit"]
-        other_due  = [s for s in due if s.platform != "reddit"]
-        total_steps = (POST_LIMIT + 1) * len(reddit_due) + len(other_due)
+        # Progress bar budget — each fetcher knows how many ticks it needs.
+        # RedditFetcher.progress_steps = POST_LIMIT + 1; others = 1.
+        total_steps = sum(
+            FETCHERS[s.platform].progress_steps
+            for s in due
+            if s.platform in FETCHERS
+        )
 
         bar_format = "{l_bar}{bar}| {n}/{total} [{elapsed}<{remaining}]"
         results: dict[str, list] = {}
@@ -111,6 +110,9 @@ def main(force: bool = False):
 
         # Write initial progress
         _write_progress(total_sources, 0, "", [])
+
+        # Load accounts once so each fetcher can read platform config (e.g. rss_base)
+        accounts = load_accounts()
 
         with tqdm(total=max(total_steps, 1), unit="req",
                   bar_format=bar_format, dynamic_ncols=True) as progress:
@@ -130,44 +132,21 @@ def main(force: bool = False):
                 else:
                     since = None
 
+                fetcher = FETCHERS.get(source.platform)
+                if fetcher is None:
+                    _append_error(errors,
+                        f"Unknown platform '{source.platform}' — skipped")
+                    continue
+
                 posts: list = []
                 try:
-                    match source.platform:
-                        case "reddit":
-                            tf = elapsed_time_filter(state, source, now)
-                            posts = fetch_subreddit(source.name, tf, progress,
-                                                    min_karma=source.threshold,
-                                                    since=since)
-                        case "bluesky":
-                            posts = fetch_bluesky(source.name, progress,
-                                                  min_likes=source.threshold,
-                                                  since=since)
-                        case "tumblr":
-                            posts = fetch_tumblr(source.name, progress,
-                                                 min_notes=source.threshold,
-                                                 since=since)
-                        case "instagram":
-                            posts = fetch_instagram(source.name, progress,
-                                                    min_likes=source.threshold,
-                                                    since=since)
-                        case "mastodon":
-                            posts = fetch_mastodon(source.name, progress,
-                                                   min_favorites=source.threshold,
-                                                   since=since)
-                        case "twitter":
-                            rss_url = f"{twitter_rss_base}/{source.name}/rss" if twitter_rss_base else ""
-                            posts = fetch_twitter(source.name, progress,
-                                                  min_likes=source.threshold,
-                                                  since=since, rss_url=rss_url)
-                        case _:
-                            _append_error(errors,
-                                f"Unknown platform '{source.platform}' — skipped")
-                            continue
+                    posts = fetcher.fetch_posts(source, progress, since,
+                                                accounts_config=accounts)
 
                 except Exception as exc:
                     _append_error(errors,
                         f"{source.platform}/{source.name}: {exc}")
-                    if source.platform != "reddit":
+                    if fetcher.progress_steps == 1:
                         progress.update(1)   # keep bar moving on failure
                     done_list.append(source_label)
                     continue
@@ -185,14 +164,19 @@ def main(force: bool = False):
             data_dir = BASE_DIR / data_dir
         db_path = data_dir / "digests.db"
         init_db(db_path)
+
+        total_new = 0
         for source in due:
             if source.name in results:
-                save_posts(db_path, day_tag, source.platform, source.name,
-                           results[source.name])
-        logger.info("Saved {} source(s) to {}", len(results), db_path)
+                total_new += save_artifacts(
+                    db_path, source.platform, source.name,
+                    results[source.name])
+        logger.info("Saved {} source(s), {} new artifact(s) to {}",
+                     len(results), total_new, db_path)
 
         # ── Toast notification ────────────────────────────────────────────────
-        notify_digest_ready(day_tag)
+        if total_new > 0:
+            notify_new_artifacts(total_new)
 
     except Exception as exc:
         _append_error(errors, f"Fetch failed: {exc}")

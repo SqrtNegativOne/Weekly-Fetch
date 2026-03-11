@@ -1,98 +1,81 @@
-import html as html_mod
-from datetime import datetime, timedelta, timezone
-from html.parser import HTMLParser
+from datetime import datetime, timezone
 
 import feedparser
 import requests
 
 from config import HEADERS, POST_LIMIT
+from fetch.base import BaseFetcher, first_image, register
 
 
-class _FirstImageExtractor(HTMLParser):
-    """Walks an HTML string and captures the src of the very first <img>."""
-
-    def __init__(self):
-        super().__init__()
-        self.url = ""
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "img" and not self.url:
-            for name, val in attrs:
-                if name == "src" and val:
-                    self.url = val
-                    break
-
-
-def _first_image(html_text: str) -> str:
-    """Return the URL of the first image in an HTML fragment, or ''."""
-    extractor = _FirstImageExtractor()
-    extractor.feed(html_text)
-    return extractor.url
-
-
-def fetch_tumblr(blog: str, progress=None, min_notes: int = 5, since: datetime | None = None) -> list[dict]:
+@register
+class TumblrFetcher(BaseFetcher):
     """Fetch recent posts from a Tumblr blog via its public RSS feed.
 
-    Tumblr RSS doesn't include note counts, so `min_notes` is accepted for
+    Tumblr RSS doesn't include note counts, so source.threshold is accepted for
     interface consistency but only applied when note data happens to be
     available (which is rare). The effective filter is the 7-day date window.
     """
-    if progress is not None:
-        progress.set_description(f"{blog}: Tumblr RSS")
 
-    url  = f"https://{blog}.tumblr.com/rss"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
+    platform = "tumblr"
 
-    if progress is not None:
-        progress.update(1)
+    def fetch_posts(self, source, progress, since: datetime | None,
+                    *, accounts_config: dict) -> list[dict]:
+        blog = source.name
 
-    # feedparser parses RSS/Atom — pass the raw text so it uses our fetched content
-    feed   = feedparser.parse(resp.text)
-    cutoff = since if since is not None else (datetime.now(timezone.utc) - timedelta(days=7))
-    posts  = []
+        if progress is not None:
+            progress.set_description(f"{blog}: Tumblr RSS")
 
-    for entry in feed.entries:
-        # ── Date filter ──────────────────────────────────────────────────────
-        published = entry.get("published_parsed")
-        if published:
-            pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
-            if pub_dt < cutoff:
-                continue  # stop here — RSS is chronological, no older posts follow
+        url  = f"https://{blog}.tumblr.com/rss"
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
 
-        # ── Title ────────────────────────────────────────────────────────────
-        title_raw = entry.get("title", "")
-        title     = html_mod.escape(title_raw[:120] + ("…" if len(title_raw) > 120 else ""))
-        link      = entry.get("link", "")
+        if progress is not None:
+            progress.update(1)
 
-        # ── Content: prefer full content over summary ─────────────────────────
-        raw_html = ""
-        if entry.get("content"):
-            raw_html = entry["content"][0].get("value", "")
-        elif entry.get("summary"):
-            raw_html = entry.get("summary", "")
+        # feedparser parses RSS/Atom — pass the raw text so it uses our fetched content
+        feed   = feedparser.parse(resp.text)
+        cutoff = self.compute_cutoff(since)
+        posts  = []
 
-        img_url = _first_image(raw_html)
+        for entry in feed.entries:
+            # ── Date filter ──────────────────────────────────────────────────
+            published = entry.get("published_parsed")
+            if published:
+                pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
+                if pub_dt < cutoff:
+                    continue  # stop here — RSS is chronological, no older posts follow
 
-        if img_url:
-            content_type = "image"
-            content      = {"url": img_url}
-        else:
-            content_type = "link"
-            content      = {"url": link}
+            # ── Title ────────────────────────────────────────────────────────
+            title_raw = entry.get("title", "")
+            title     = self.make_title(title_raw, fallback="[Post]")
+            link      = entry.get("link", "")
 
-        posts.append({
-            "title":    title or "[Post]",
-            "link":     link,
-            "score":    0,   # RSS has no note-count field
-            "type":     content_type,
-            "content":  content,
-            "comments": [],
-            "platform": "tumblr",
-            "author":   blog,
-        })
+            # ── Content: prefer full content over summary ─────────────────────
+            raw_html = ""
+            if entry.get("content"):
+                raw_html = entry["content"][0].get("value", "")
+            elif entry.get("summary"):
+                raw_html = entry.get("summary", "")
 
-        if len(posts) >= POST_LIMIT:
-            break
+            img_url = first_image(raw_html)
 
-    return posts
+            if img_url:
+                content_type = "image"
+                content      = {"url": img_url}
+            else:
+                content_type = "link"
+                content      = {"url": link}
+
+            posts.append(self.make_post(
+                title=title,
+                link=link,
+                score=0,   # RSS has no note-count field
+                content_type=content_type,
+                content=content,
+                author=blog,
+            ))
+
+            if len(posts) >= POST_LIMIT:
+                break
+
+        return posts

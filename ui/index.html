@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Weekly Fetch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/digest.css">
 </head>
 <body>
@@ -29,22 +32,18 @@
 
   <!-- ── Left app nav sidebar ──────────────────────────────────────── -->
   <div id="app-nav">
-    <div id="nav-section-label">Reports</div>
-    <div id="report-list">
-      <div id="report-list-empty">No reports yet.<br>Run a fetch to get started.</div>
-    </div>
     <div id="nav-bottom">
       <button class="nav-btn" data-view="home">
         <span class="nav-icon">&#x2302;</span>
         <span class="nav-label">Home</span>
       </button>
-      <button class="nav-btn" id="btn-generate" title="Fetch sources and generate today's report">
-        <span class="nav-icon">&#x21BA;</span>
-        <span class="nav-label">Generate Report</span>
-      </button>
       <button class="nav-btn" data-view="sources">
         <span class="nav-icon">&#x2630;</span>
         <span class="nav-label">Sources</span>
+      </button>
+      <button class="nav-btn" data-view="archive">
+        <span class="nav-icon">&#x2610;</span>
+        <span class="nav-label">Archive</span>
       </button>
       <button class="nav-btn" data-view="settings">
         <span class="nav-icon">&#x2699;</span>
@@ -60,24 +59,17 @@
   <!-- ── Main content area ─────────────────────────────────────────── -->
   <div id="app-main">
 
-    <!-- Home view — state-driven CTA + progress panel -->
+    <!-- Home view — the viewer IS the home page -->
     <div id="view-home" class="app-view active">
-      <!-- No sources configured yet -->
-      <div id="home-no-sources" class="home-cta" style="display:none">
-        <div class="home-cta-label">Add sources</div>
+      <!-- Empty state -->
+      <div id="home-empty" style="display:none">
+        <div class="home-empty-msg">Nothing pending for today!</div>
       </div>
-      <!-- Sources exist but no reports yet -->
-      <div id="home-has-sources" class="home-cta" style="display:none">
-        <div class="home-cta-label">Generate your first report</div>
-      </div>
-      <!-- Reports exist -->
-      <div id="home-ready" class="home-cta" style="display:none">
-        <div class="home-cta-label">See today's Report</div>
-      </div>
-      <!-- A fetch is in progress (shown alongside the CTA, not replacing it) -->
+
+      <!-- Fetching state -->
       <div id="home-fetching" class="fetch-progress-panel" style="display:none">
         <div class="fetch-progress">
-          <div class="fetch-progress-title">Generating report&hellip;</div>
+          <div class="fetch-progress-title">Fetching new artifacts&hellip;</div>
           <div class="fetch-progress-bar-wrap">
             <div class="fetch-progress-bar" id="fetch-progress-bar"></div>
           </div>
@@ -85,9 +77,57 @@
           <div class="fetch-progress-list" id="fetch-progress-list"></div>
         </div>
       </div>
+
+      <!-- Viewer (inline, not overlay) -->
+      <div id="viewer-container" style="display:none">
+        <div id="bg">
+          <div id="blob1" class="blob"></div>
+          <div id="blob2" class="blob"></div>
+          <div id="blob3" class="blob"></div>
+        </div>
+
+        <div id="viewer-app">
+          <div id="topbar">
+            <div id="tabs"></div>
+            <div id="topbar-right">
+              <div id="topbar-progress"></div>
+            </div>
+          </div>
+
+          <div id="layout">
+            <div id="card-area">
+              <div id="card-scroll">
+                <div id="card"></div>
+                <div id="card-comments"></div>
+              </div>
+            </div>
+
+            <div id="sidebar">
+              <div id="sidebar-header">
+                <span>Notes &amp; Todos</span>
+                <button id="btn-copy-notes" title="Copy notes to clipboard">&#x2398; Copy</button>
+              </div>
+              <div id="notes-post-title"></div>
+              <div class="sidebar-section-label">Notes</div>
+              <textarea id="notes" placeholder="Click to start a bullet list&hellip;"></textarea>
+              <div class="sidebar-section-label">Todos</div>
+              <textarea id="todos" placeholder="Add a todo&hellip;"></textarea>
+            </div>
+          </div>
+
+          <div id="bottombar">
+            <span class="kb-hint"><kbd>h</kbd><kbd>l</kbd> prev / next</span>
+            <span class="kb-hint"><kbd>j</kbd><kbd>k</kbd> scroll</span>
+            <span class="kb-hint"><kbd>c</kbd> comments</span>
+            <span class="kb-hint"><kbd>Ctrl+N</kbd> notes</span>
+            <span class="kb-hint"><kbd>Enter</kbd> archive &amp; next</span>
+            <span class="kb-hint"><kbd>Ctrl+Z</kbd> undo</span>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Sources view (formerly Accounts) -->
+    <!-- Sources view -->
     <div id="view-sources" class="app-view">
       <div class="app-view-content">
         <div class="app-view-header">Sources</div>
@@ -195,6 +235,31 @@
       </div>
     </div>
 
+    <!-- Archive view -->
+    <div id="view-archive" class="app-view">
+      <div class="app-view-content">
+        <div class="app-view-header">Archive</div>
+
+        <div class="archive-controls">
+          <input type="text" id="archive-search" placeholder="Search by title&hellip;" class="archive-search-input">
+          <select id="archive-platform-filter" class="archive-filter-select">
+            <option value="">All platforms</option>
+            <option value="reddit">Reddit</option>
+            <option value="bluesky">Bluesky</option>
+            <option value="tumblr">Tumblr</option>
+            <option value="instagram">Instagram</option>
+            <option value="mastodon">Mastodon</option>
+            <option value="twitter">Twitter</option>
+          </select>
+        </div>
+
+        <div id="archive-list"></div>
+        <div class="archive-pagination">
+          <button class="btn btn-secondary" id="btn-archive-more" style="display:none">Load more</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings view -->
     <div id="view-settings" class="app-view">
       <div class="app-view-content">
@@ -231,7 +296,14 @@
           <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
           <button class="btn btn-secondary" id="btn-install-task">Install Task</button>
           <button class="btn btn-danger" id="btn-remove-task">Remove Task</button>
-          <button class="btn btn-accent" id="btn-run-now">Run Now</button>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">Fetch Now</div>
+          <div class="form-actions">
+            <button class="btn btn-accent" id="btn-run-now">Fetch Now</button>
+          </div>
+          <p class="settings-dev-note">For testing only. Artifacts are meant to arrive on their own schedule — not on demand.</p>
         </div>
       </div>
     </div>
@@ -256,13 +328,13 @@
             the best posts as a distraction-free flashcard digest — one card at a time, no infinite scroll.
           </p>
           <p class="about-desc">
-            Notes you write per card are saved to a local SQLite database. Your data never
+            Notes and todos you write per card are saved to a local SQLite database. Your data never
             leaves your machine.
           </p>
         </div>
 
         <div class="form-section about-section">
-          <div class="form-section-title">Keyboard shortcuts (in report view)</div>
+          <div class="form-section-title">Keyboard shortcuts</div>
           <div class="about-keys">
             <div class="about-key-row"><kbd>h</kbd> <span>Previous card</span></div>
             <div class="about-key-row"><kbd>l</kbd> <span>Next card</span></div>
@@ -270,6 +342,8 @@
             <div class="about-key-row"><kbd>k</kbd> <span>Scroll up</span></div>
             <div class="about-key-row"><kbd>c</kbd> <span>Toggle comments</span></div>
             <div class="about-key-row"><kbd>Ctrl</kbd><kbd>N</kbd> <span>Focus notes sidebar</span></div>
+            <div class="about-key-row"><kbd>Enter</kbd> <span>Archive &amp; next</span></div>
+            <div class="about-key-row"><kbd>Ctrl</kbd><kbd>Z</kbd> <span>Undo last action</span></div>
             <div class="about-key-row"><kbd>&#x2190;</kbd><kbd>&#x2192;</kbd> <span>Navigate cards</span></div>
           </div>
         </div>
@@ -292,42 +366,6 @@
 
 </div><!-- #app-body -->
 
-<!-- ── Full-screen digest viewer overlay ─────────────────────────── -->
-<div id="viewer-overlay">
-  <div id="bg">
-    <div id="blob1" class="blob"></div>
-    <div id="blob2" class="blob"></div>
-    <div id="blob3" class="blob"></div>
-  </div>
-
-  <div id="viewer-app">
-    <div id="topbar">
-<div id="tabs"></div>
-      <div id="topbar-right">
-        <div id="topbar-progress"></div>
-      </div>
-    </div>
-
-    <div id="layout">
-      <div id="card-area">
-        <div id="card-scroll">
-          <div id="card"></div>
-          <div id="card-comments"></div>
-        </div>
-      </div>
-
-      <div id="sidebar">
-        <div id="sidebar-header">
-          <span>Notes</span>
-          <button id="btn-copy-notes" title="Copy notes to clipboard">&#x2398; Copy</button>
-        </div>
-        <div id="notes-post-title"></div>
-        <textarea id="notes" placeholder="Click to start a bullet list&hellip;"></textarea>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 MathJax = {
   tex: {
@@ -347,10 +385,6 @@ function tbAction(name) {
 }
 
 // ── Title bar drag (frameless window) ─────────────────────────────────────────
-// CSS `-webkit-app-region: drag` doesn't work in pywebview/Edge WebView2 without
-// a special WebView2 flag. We implement drag via the pywebview Python bridge instead:
-// mousedown → fetch window screen position from Python, then on each mousemove
-// tell Python to move the window to (initial_pos + delta).
 (function () {
   var drag = document.getElementById('titlebar-drag');
   var dragging = false;
@@ -375,7 +409,6 @@ function tbAction(name) {
     if (!dragging) return;
     pendingX = winX + (e.screenX - startSX);
     pendingY = winY + (e.screenY - startSY);
-    // Throttle to one call per animation frame so we don't flood the bridge.
     if (!rafPending) {
       rafPending = true;
       requestAnimationFrame(function () {

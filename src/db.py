@@ -1,13 +1,9 @@
 """SQLite persistence layer for Weekly Fetch.
 
-Why SQLite?
-  - Zero setup: a single file, no server process.
-  - Python's built-in `sqlite3` module handles everything.
-  - Syncthing can sync the .db file across machines transparently.
-
 Tables:
-  posts  — one row per fetched post (deduplicated by link URL)
-  notes  — one row per (post_id, week_tag) with user note text
+  artifacts — one row per fetched post (deduplicated by link URL)
+  notes     — one row per artifact with user note text
+  todos     — one row per artifact with user todo text
 """
 import json
 import sqlite3
@@ -27,9 +23,8 @@ def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
         conn.executescript("""
-            CREATE TABLE IF NOT EXISTS posts (
+            CREATE TABLE IF NOT EXISTS artifacts (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                week_tag      TEXT NOT NULL,
                 platform      TEXT NOT NULL,
                 source_name   TEXT NOT NULL,
                 fetched_at    TEXT NOT NULL,
@@ -38,118 +33,214 @@ def init_db(db_path: Path) -> None:
                 score         INTEGER,
                 post_type     TEXT,
                 content_json  TEXT,
-                comments_json TEXT
+                comments_json TEXT,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                archived_at   TEXT
             );
+            CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+
             CREATE TABLE IF NOT EXISTS notes (
-                post_id    INTEGER NOT NULL,
-                week_tag   TEXT NOT NULL,
-                note_text  TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (post_id, week_tag)
+                artifact_id INTEGER PRIMARY KEY REFERENCES artifacts(id),
+                note_text   TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_posts_week ON posts(week_tag);
+
+            CREATE TABLE IF NOT EXISTS todos (
+                artifact_id INTEGER PRIMARY KEY REFERENCES artifacts(id),
+                todo_text   TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            );
         """)
 
 
-def save_posts(db_path: Path, week_tag: str, platform: str,
-               source_name: str, posts: list) -> None:
-    """Upsert a batch of posts.
+def save_artifacts(db_path: Path, platform: str,
+                   source_name: str, artifacts: list) -> int:
+    """Insert new artifacts, skipping any whose link already exists.
 
-    Posts are deduplicated by `link` URL — if a post already exists
-    (e.g. the fetcher ran twice) its score and comments are updated.
+    Returns the number of newly inserted rows.
     """
     fetched_at = datetime.now().isoformat()
+    inserted = 0
     with _connect(db_path) as conn:
-        for p in posts:
-            conn.execute("""
-                INSERT INTO posts
-                    (week_tag, platform, source_name, fetched_at,
-                     title, link, score, post_type, content_json, comments_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(link) DO UPDATE SET
-                    score         = excluded.score,
-                    comments_json = excluded.comments_json,
-                    fetched_at    = excluded.fetched_at
-            """, (
-                week_tag, platform, source_name, fetched_at,
-                p.get("title"), p.get("link"), p.get("score"), p.get("type"),
-                json.dumps(p.get("content")),
-                json.dumps(p.get("comments")),
-            ))
+        for p in artifacts:
+            try:
+                conn.execute("""
+                    INSERT OR IGNORE INTO artifacts
+                        (platform, source_name, fetched_at,
+                         title, link, score, post_type, content_json, comments_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    platform, source_name, fetched_at,
+                    p.get("title"), p.get("link"), p.get("score"), p.get("type"),
+                    json.dumps(p.get("content")),
+                    json.dumps(p.get("comments")),
+                ))
+                if conn.execute("SELECT changes()").fetchone()[0] > 0:
+                    inserted += 1
+            except sqlite3.IntegrityError:
+                pass
+    return inserted
 
 
-def list_tags(db_path: Path) -> list[str]:
-    """Return distinct day tags that have posts, newest first."""
+def get_pending(db_path: Path) -> list[dict]:
+    """Return all pending artifacts with notes+todos joined, ordered by source then score."""
     if not db_path.exists():
         return []
     with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT week_tag FROM posts ORDER BY week_tag DESC"
-        ).fetchall()
-    return [r["week_tag"] for r in rows]
-
-
-def get_digest(db_path: Path, week_tag: str) -> list[dict]:
-    """Return all posts for a given week, with note_text joined in.
-
-    The LEFT JOIN means posts with no note still appear (note_text = '').
-    """
-    with _connect(db_path) as conn:
         rows = conn.execute("""
-            SELECT p.id, p.platform, p.source_name, p.title, p.link,
-                   p.score, p.post_type, p.content_json, p.comments_json,
-                   COALESCE(n.note_text, '') AS note_text
-            FROM   posts p
-            LEFT JOIN notes n
-                   ON n.post_id = p.id AND n.week_tag = p.week_tag
-            WHERE  p.week_tag = ?
-            ORDER  BY p.source_name, p.score DESC
-        """, (week_tag,)).fetchall()
+            SELECT a.id, a.platform, a.source_name, a.title, a.link,
+                   a.score, a.post_type, a.content_json, a.comments_json,
+                   COALESCE(n.note_text, '') AS note_text,
+                   COALESCE(t.todo_text, '') AS todo_text
+            FROM   artifacts a
+            LEFT JOIN notes n ON n.artifact_id = a.id
+            LEFT JOIN todos t ON t.artifact_id = a.id
+            WHERE  a.status = 'pending'
+            ORDER  BY a.source_name, a.score DESC
+        """).fetchall()
 
-    return [{
-        "id":        r["id"],
-        "platform":  r["platform"],
-        "subreddit": r["source_name"],
-        "title":     r["title"],
-        "link":      r["link"],
-        "score":     r["score"] or 0,
-        "type":      r["post_type"],
-        "content":   json.loads(r["content_json"] or "null"),
-        "comments":  json.loads(r["comments_json"] or "[]"),
-        "note":      r["note_text"],
-    } for r in rows]
+    return [_row_to_dict(r) for r in rows]
 
 
-def save_note(db_path: Path, post_id: int, week_tag: str, text: str) -> None:
-    """Upsert a note. Deletes the row when text is blank (clean DB)."""
+def get_archived(db_path: Path, search: str | None = None,
+                 platform: str | None = None, source: str | None = None,
+                 limit: int = 50, offset: int = 0) -> list[dict]:
+    """Return archived artifacts with optional filtering and pagination."""
+    if not db_path.exists():
+        return []
+
+    conditions = ["a.status = 'archived'"]
+    params: list = []
+
+    if search:
+        conditions.append("a.title LIKE ?")
+        params.append(f"%{search}%")
+    if platform:
+        conditions.append("a.platform = ?")
+        params.append(platform)
+    if source:
+        conditions.append("a.source_name = ?")
+        params.append(source)
+
+    where = " AND ".join(conditions)
+    params.extend([limit, offset])
+
+    with _connect(db_path) as conn:
+        rows = conn.execute(f"""
+            SELECT a.id, a.platform, a.source_name, a.title, a.link,
+                   a.score, a.post_type, a.content_json, a.comments_json,
+                   a.archived_at,
+                   COALESCE(n.note_text, '') AS note_text,
+                   COALESCE(t.todo_text, '') AS todo_text
+            FROM   artifacts a
+            LEFT JOIN notes n ON n.artifact_id = a.id
+            LEFT JOIN todos t ON t.artifact_id = a.id
+            WHERE  {where}
+            ORDER  BY a.archived_at DESC
+            LIMIT ? OFFSET ?
+        """, params).fetchall()
+
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_artifact(db_path: Path, artifact_id: int) -> dict | None:
+    """Return a single artifact with notes+todos, or None."""
+    with _connect(db_path) as conn:
+        row = conn.execute("""
+            SELECT a.id, a.platform, a.source_name, a.title, a.link,
+                   a.score, a.post_type, a.content_json, a.comments_json,
+                   a.status, a.archived_at,
+                   COALESCE(n.note_text, '') AS note_text,
+                   COALESCE(t.todo_text, '') AS todo_text
+            FROM   artifacts a
+            LEFT JOIN notes n ON n.artifact_id = a.id
+            LEFT JOIN todos t ON t.artifact_id = a.id
+            WHERE  a.id = ?
+        """, (artifact_id,)).fetchone()
+
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def archive_artifact(db_path: Path, artifact_id: int) -> None:
+    """Set status='archived' and archived_at=now."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE artifacts SET status = 'archived', archived_at = ?
+            WHERE id = ?
+        """, (datetime.now().isoformat(), artifact_id))
+
+
+def unarchive_artifact(db_path: Path, artifact_id: int) -> None:
+    """Set status='pending' and archived_at=NULL."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE artifacts SET status = 'pending', archived_at = NULL
+            WHERE id = ?
+        """, (artifact_id,))
+
+
+def save_note(db_path: Path, artifact_id: int, text: str) -> None:
+    """Upsert a note. Deletes the row when text is blank."""
     updated_at = datetime.now().isoformat()
     with _connect(db_path) as conn:
         if text.strip():
             conn.execute("""
-                INSERT INTO notes (post_id, week_tag, note_text, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(post_id, week_tag) DO UPDATE SET
+                INSERT INTO notes (artifact_id, note_text, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(artifact_id) DO UPDATE SET
                     note_text  = excluded.note_text,
                     updated_at = excluded.updated_at
-            """, (post_id, week_tag, text, updated_at))
+            """, (artifact_id, text, updated_at))
         else:
-            conn.execute(
-                "DELETE FROM notes WHERE post_id = ? AND week_tag = ?",
-                (post_id, week_tag)
-            )
+            conn.execute("DELETE FROM notes WHERE artifact_id = ?", (artifact_id,))
 
 
-def get_notes_summary(db_path: Path) -> list[dict]:
-    """Return all non-empty notes with their post context, newest first."""
-    if not db_path.exists():
-        return []
+def save_todo(db_path: Path, artifact_id: int, text: str) -> None:
+    """Upsert a todo. Deletes the row when text is blank."""
+    updated_at = datetime.now().isoformat()
     with _connect(db_path) as conn:
-        rows = conn.execute("""
-            SELECT n.post_id, n.week_tag, n.note_text,
-                   p.title, p.link, p.source_name, p.platform
-            FROM   notes n
-            JOIN   posts p ON p.id = n.post_id
-            WHERE  n.note_text != ''
-            ORDER  BY n.updated_at DESC
-        """).fetchall()
-    return [dict(r) for r in rows]
+        if text.strip():
+            conn.execute("""
+                INSERT INTO todos (artifact_id, todo_text, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(artifact_id) DO UPDATE SET
+                    todo_text  = excluded.todo_text,
+                    updated_at = excluded.updated_at
+            """, (artifact_id, text, updated_at))
+        else:
+            conn.execute("DELETE FROM todos WHERE artifact_id = ?", (artifact_id,))
+
+
+def count_pending(db_path: Path) -> int:
+    """Count pending artifacts."""
+    if not db_path.exists():
+        return 0
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE status = 'pending'"
+        ).fetchone()
+    return row[0]
+
+
+def _row_to_dict(r) -> dict:
+    """Convert a sqlite3.Row to the dict format the UI expects."""
+    d = {
+        "id":          r["id"],
+        "platform":    r["platform"],
+        "source_name": r["source_name"],
+        "title":       r["title"],
+        "link":        r["link"],
+        "score":       r["score"] or 0,
+        "type":        r["post_type"],
+        "content":     json.loads(r["content_json"] or "null"),
+        "comments":    json.loads(r["comments_json"] or "[]"),
+        "note":        r["note_text"],
+        "todo":        r["todo_text"],
+    }
+    if "archived_at" in r.keys():
+        d["archived_at"] = r["archived_at"]
+    if "status" in r.keys():
+        d["status"] = r["status"]
+    return d

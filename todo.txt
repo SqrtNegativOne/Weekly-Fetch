@@ -1,7 +1,31 @@
-Every post is a task.
+first continue the prev session
 
-Q. What do we call each post? Ans. Artifact? Just post?
+---
 
-Each artifact is a todo? An anki flashcard?
-You can either take notes on one or "discard"? it. after you do that, the artifact is "processed".
-Instead of seeing weekly reports or whatever, you either have pending artifacts, or you don't. The concept of generating reports etc. is deleted. Artifacts are simply fetched according to a schedule. You can see pending Artifacts, and processed artifacts with their notes are "archived".
+Cold start problem:
+
+---
+
+Time spent on the app, and on each source is tracked. The user can see it on the Usage page. It also has statistics for the number of Todos or Notes taken per a Source's Artifacts.
+
+When the app detects that the user has spent more than 20 minutes on the app and presses the enter or → or l key to go to the next page, a different page will open, which looks different from all the other Artifacts. It will read:
+"20-20-20" [larger than the usual post titles, title is in the middle]
+"After 20 minutes, see 20 yards away, for 20 seconds."
+[timer for 20 seconds]
+"Take a deep breath." [in italics]
+After the 20 seconds are over, the user will be allowed to move to the next Artifact. Until then they won't be able to.
+
+Ask me about any details you feel should be specified.
+
+No need to care about migration or backwards compatibility; just delete all data.
+
+---
+
+Check for colours that are hardcoded. Shift them to a CSS variable. Use oklch instead of current rgb.
+
+after the above:
+Decide on a better, calmer, nicer colour palette.
+actually:
+Add an option to change themes of the app in settings.
+Then, create multiple colour designs.
+this should allow fast iteration in the design process.
