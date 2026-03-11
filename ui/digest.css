@@ -5,35 +5,35 @@
 /* ── Design tokens ────────────────────────────────── */
 :root {
   /* Surfaces */
-  --bg-deep:     oklch(9.5% 0.012 55);
-  --bg-surface:  oklch(10% 0.042 272 / 0.55);
+  --bg-deep:     oklch(8.5% 0.020 285);
+  --bg-surface:  oklch(10% 0.035 285 / 0.55);
   --bg-elevated: oklch(100% 0 0 / 0.06);
   --bg-hover:    oklch(100% 0 0 / 0.09);
   --bg-muted:    oklch(100% 0 0 / 0.04);
 
-  /* Overlay backgrounds (dark navy tints, all same hue family) */
-  --bg-titlebar:    oklch(5.5% 0.038 275 / 0.97);
-  --bg-topbar:      oklch(6.5% 0.039 275 / 0.65);
-  --bg-bottombar:   oklch(6.5% 0.039 275 / 0.55);
-  --bg-sidebar:     oklch(6.5% 0.039 275 / 0.72);
-  --bg-fetch-panel: oklch(6.5% 0.039 275 / 0.60);
-  --bg-select:      oklch(13.5% 0.049 270);
+  /* Overlay backgrounds (cool purple tints, all same hue family) */
+  --bg-titlebar:    oklch(4.5% 0.030 285 / 0.97);
+  --bg-topbar:      oklch(5.5% 0.032 285 / 0.65);
+  --bg-bottombar:   oklch(5.5% 0.032 285 / 0.55);
+  --bg-sidebar:     oklch(5.5% 0.032 285 / 0.72);
+  --bg-fetch-panel: oklch(5.5% 0.032 285 / 0.60);
+  --bg-select:      oklch(13% 0.045 285);
 
-  /* Text — 4 levels + body (warm cream tint) */
-  --text-1:    oklch(99% 0.014 88 / 0.92);
-  --text-2:    oklch(99% 0.014 88 / 0.60);
-  --text-3:    oklch(99% 0.014 88 / 0.38);
-  --text-4:    oklch(99% 0.014 88 / 0.18);
-  --text-body: oklch(99% 0.014 88 / 0.82);
+  /* Text — 4 levels + body (cool lavender-white) */
+  --text-1:    oklch(97% 0.012 285 / 0.93);
+  --text-2:    oklch(97% 0.012 285 / 0.60);
+  --text-3:    oklch(97% 0.012 285 / 0.38);
+  --text-4:    oklch(97% 0.012 285 / 0.18);
+  --text-body: oklch(97% 0.012 285 / 0.82);
 
-  /* Accent — warm ember */
-  --accent:            oklch(59% 0.145 47);
-  --accent-light:      oklch(70% 0.124 50);
-  --accent-surface:    oklch(59% 0.145 47 / 0.14);
-  --accent-border:     oklch(59% 0.145 47 / 0.28);
-  --accent-glow:       oklch(59% 0.145 47 / 0.18);
-  --accent-selection:  oklch(59% 0.145 47 / 0.35);
-  --accent-blockquote: oklch(59% 0.145 47 / 0.45);
+  /* Accent — rich violet */
+  --accent:            oklch(62% 0.210 285);
+  --accent-light:      oklch(74% 0.170 285);
+  --accent-surface:    oklch(62% 0.210 285 / 0.14);
+  --accent-border:     oklch(62% 0.210 285 / 0.28);
+  --accent-glow:       oklch(62% 0.210 285 / 0.18);
+  --accent-selection:  oklch(62% 0.210 285 / 0.35);
+  --accent-blockquote: oklch(62% 0.210 285 / 0.45);
 
   /* Platform colors */
   --reddit:    oklch(59% 0.222 31);
@@ -69,10 +69,10 @@
   --border-light:  oklch(100% 0 0 / 0.12);
   --border-subtle: oklch(100% 0 0 / 0.05);
 
-  /* Blob backgrounds (warm amber family) */
-  --blob-1: oklch(20% 0.046 50);
-  --blob-2: oklch(12% 0.028 50);
-  --blob-3: oklch(32% 0.073 45);
+  /* Blob backgrounds (cool purple family) */
+  --blob-1: oklch(18% 0.045 285);
+  --blob-2: oklch(11% 0.028 285);
+  --blob-3: oklch(28% 0.070 285);
 
   /* Scrollbar */
   --scrollbar-thumb:       oklch(100% 0 0 / 0.10);
@@ -240,7 +240,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #app-nav {
   width: 54px; flex-shrink: 0;
   display: flex; flex-direction: column;
-  background: linear-gradient(180deg, oklch(7.2% 0.042 278 / 0.95) 0%, oklch(5.9% 0.038 278 / 0.98) 100%);
+  background: linear-gradient(180deg, oklch(7.2% 0.038 285 / 0.95) 0%, oklch(5.9% 0.034 285 / 0.98) 100%);
   border-right: 1px solid var(--border);
   overflow-x: hidden; overflow-y: auto;
   transition: width 0.28s var(--ease);
@@ -292,7 +292,7 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ── Main content area ────────────────────────────── */
 #app-main {
   flex: 1; position: relative; overflow: hidden;
-  background: radial-gradient(ellipse at 50% 0%, oklch(17% 0.06 278 / 0.12) 0%, transparent 70%);
+  background: radial-gradient(ellipse at 50% 0%, oklch(17% 0.06 285 / 0.12) 0%, transparent 70%);
 }
 
 /* Views: default hidden, block when active */
