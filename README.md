@@ -3,7 +3,7 @@
 A slower, systematic, and more thoughtful approach to social media.
 
 - **Centralised**. Get posts from Reddit, Instagram, Tumblr, Twitter, Bluesky and Mastodon. All data is stored locally.
-- **Flexible**. Set different schedules for each source.
+- **Flexible**. Set different schedules for each source. The name is a misnomer.
 - **Intentional**. Take notes, add todos for each post, take breaks.
 - **Focused**. Swipe instead of facing a constant unlimited barrage of un-actionable information through scrolling.
 
@@ -20,3 +20,5 @@ Download the latest `.zip` from [Releases](../../releases), unzip anywhere, and 
 uv sync
 uv run python app.py
 ```
+
+## Features

@@ -11,3 +11,44 @@ Posts that start with an image, are shown only as an image; the content is gone.
 Add an option to change themes of the app in settings.
 Then, create multiple colour designs.
 this should allow fast iteration in the design process.
+
+---
+
+Ambitious:
+Think about Youtube support. How would that even work?
+Maybe all videos are downloaded using yt downloader; maybe there is a setting to disable this and use embeds instead.
+
+---
+
+# Notetaking and todos
+
+Notes and Todos have to be processed as well: so you have two types of those also; pending, and archived.
+
+When there are artifacts due:
+- First card gives details on the number of artifacts, sources.
+- Middle cards show each artifact.
+- Last card shows all the *pending* notes and todos.
+
+The Archive page not only notes archived artifacts, but also archived notes and todos.
+
+## Ambitious:
+
+The app will integrate with software like Notion, Super Productivity, Obsidian etc.; all todos can be easily exported into there.
+
+---
+
+Fix issues in the GUI for sources.
+
+If the user tries to paste a URL into an ID for a source, convert it to an ID right in front of them (they paste url, hit enter or click somewhere else, the URL transforms into the ID). If the thing user pasted is nonesense, convert it into nothing, and spout an in-app error notification.
+
+---
+
+Make it so that you can right click anywhere and see the options. Like the copy option, developer tools option etc.
+
+When the app is already open, and it is opened again, have an error like Anki does.
+
+Currently going from the main card to an artifact card and artifact card to the final card works and has a nice animation for the card, but the notes and todo sidebar on the right just appears out of nowhere. Have a nice animation for it as well!
+
+When I click a link that is present on a post, it opens up that URL in the webview with no way to go back. Make it so that the link opens in the user's default browser.
+
+What would it take to create an actual titlebar which also looks different? I realise it might be difficult, but you would only have to make one once, yes?

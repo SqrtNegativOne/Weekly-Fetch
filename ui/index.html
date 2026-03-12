@@ -18,20 +18,7 @@
 <!-- Toast notifications -->
 <div id="toast-container" role="status" aria-live="polite"></div>
 
-<!-- ── Custom title bar (frameless window drag region) ───────────────── -->
-<div id="titlebar">
-  <div id="titlebar-drag">
-    <img src="/static/logo.svg" class="tb-icon" style="height:16px;width:16px;display:inline-block;vertical-align:middle;">
-    <span class="tb-title">Weekly Fetch</span>
-  </div>
-  <div id="titlebar-controls">
-    <button class="tb-btn tb-min" title="Minimize" onclick="tbAction('minimize')">&#x2212;</button>
-    <button class="tb-btn tb-max" title="Maximize" onclick="tbAction('toggle_maximize')">&#x25A1;</button>
-    <button class="tb-btn tb-close" title="Close" onclick="tbAction('close_window')">&#x2715;</button>
-  </div>
-</div>
-
-<!-- ── App body below the title bar ─────────────────────────────────── -->
+<!-- ── App body ──────────────────────────────────────────────────────── -->
 <div id="app-body">
 
   <!-- ── Left app nav sidebar ──────────────────────────────────────── -->
@@ -407,52 +394,6 @@ MathJax = {
 };
 
 // ── Title bar window control bridge ───────────────────────────────────────────
-// pywebview exposes Python methods at window.pywebview.api.*
-// When running in a browser during dev, pywebview is absent — the buttons just do nothing.
-function tbAction(name) {
-  if (window.pywebview && window.pywebview.api) {
-    window.pywebview.api[name]();
-  }
-}
-
-// ── Title bar drag (frameless window) ─────────────────────────────────────────
-(function () {
-  var drag = document.getElementById('titlebar-drag');
-  var dragging = false;
-  var startSX, startSY, winX, winY;
-  var rafPending = false, pendingX, pendingY;
-
-  drag.addEventListener('mousedown', function (e) {
-    if (e.button !== 0) return;
-    if (!window.pywebview || !window.pywebview.api) return;
-    e.preventDefault();
-    startSX = e.screenX;
-    startSY = e.screenY;
-    dragging = false; // wait for position fetch
-    window.pywebview.api.get_window_pos().then(function (pos) {
-      winX = pos.x;
-      winY = pos.y;
-      dragging = true;
-    });
-  });
-
-  document.addEventListener('mousemove', function (e) {
-    if (!dragging) return;
-    pendingX = winX + (e.screenX - startSX);
-    pendingY = winY + (e.screenY - startSY);
-    if (!rafPending) {
-      rafPending = true;
-      requestAnimationFrame(function () {
-        window.pywebview.api.move_window(pendingX, pendingY);
-        rafPending = false;
-      });
-    }
-  });
-
-  document.addEventListener('mouseup', function () {
-    dragging = false;
-  });
-})();
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

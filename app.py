@@ -26,6 +26,7 @@ import uvicorn
 import webview
 
 from server import create_app
+from dwm import apply_titlebar_style
 
 
 def _find_free_port() -> int:
@@ -37,44 +38,6 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
-
-
-class WindowApi:
-    """Python methods exposed to JavaScript via window.pywebview.api.*
-
-    pywebview bridges JS and Python: calling pywebview.api.minimize() in JS
-    calls this Python method, which then tells the native window to minimize.
-    The window reference is set after creation (chicken-and-egg: we need the
-    api object to create the window, but need the window to use the api).
-    """
-    def __init__(self):
-        self._win = None
-
-    def set_window(self, win):
-        self._win = win
-
-    def minimize(self):
-        if self._win:
-            self._win.minimize()
-
-    def toggle_maximize(self):
-        if self._win:
-            self._win.toggle_fullscreen()
-
-    def close_window(self):
-        if self._win:
-            self._win.destroy()
-
-    def get_window_pos(self):
-        """Return the window's current screen position (used by JS drag)."""
-        if self._win:
-            return {"x": self._win.x, "y": self._win.y}
-        return {"x": 0, "y": 0}
-
-    def move_window(self, x, y):
-        """Move the window to an absolute screen position (used by JS drag)."""
-        if self._win:
-            self._win.move(int(x), int(y))
 
 
 def _task_exists() -> bool:
@@ -115,9 +78,10 @@ def main():
     port = _find_free_port()
     app  = create_app()
 
-    from config import load_settings
+    from config import load_settings, BUNDLE_DIR
     settings = load_settings()
     start_fullscreen = settings.get("start_fullscreen", True)
+    icon_path = str(BUNDLE_DIR / "ui" / "logo.ico")
 
     # Start uvicorn in a daemon thread.
     # `daemon=True` means this thread is killed automatically when the
@@ -138,33 +102,26 @@ def main():
     # before we tell pywebview to open the URL.
     time.sleep(0.8)
 
-    api = WindowApi()
-
     win = webview.create_window(
         title="Weekly Fetch",
         url=f"http://127.0.0.1:{port}",
         width=1280,
         height=860,
         min_size=(800, 600),
-        frameless=True,
-        easy_drag=False,
+        frameless=False,
         text_select=True,
-        js_api=api,
     )
 
-    # Now that the window exists, give the api a reference to it.
-    api.set_window(win)
+    # Apply DWM styling (dark caption colors, Consolas font, app icon).
+    # Must run after events.shown — the HWND isn't valid until the window appears.
+    win.events.shown += lambda: apply_titlebar_style("Weekly Fetch", icon_path=icon_path)
 
-    # Go fullscreen after the window is shown, not at creation time.
-    # Creating with fullscreen=True while frameless=True causes pywebview to
-    # use a non-frameless window internally, so restoring from fullscreen
-    # brings back the native OS title bar alongside our custom HTML one.
+    # maximize() fills the screen while keeping the taskbar visible.
+    # toggle_fullscreen() is true kiosk mode (hides taskbar) — wrong for start_fullscreen.
     if start_fullscreen:
-        def _go_fullscreen():
-            win.toggle_fullscreen()
-        win.events.shown += _go_fullscreen
+        win.events.shown += lambda: win.maximize()
 
-    webview.start()   # blocks until the window is closed
+    webview.start(icon="ui/logo.ico")   # blocks until the window is closed
 
 
 if __name__ == "__main__":
