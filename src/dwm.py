@@ -1,32 +1,29 @@
-"""dwm.py — Windows DWM titlebar styling + custom caption text.
+"""dwm.py — DWM styling + frameless window resize hit-testing.
 
-Three things this module does:
-  1. DWM attributes  — dark chrome, custom caption/text/border colors
-  2. Window icon     — sets the titlebar & taskbar icon from an .ico file
-  3. Caption font    — subclasses the window WndProc to draw the title in
-                       Consolas instead of Segoe UI
+Two jobs:
+  1. DWM attributes  — dark scrollbar/caret chrome, violet accent border.
+  2. Resize borders  — subclasses WndProc to intercept WM_NCHITTEST and
+                       return resize hit codes for the window edges, giving
+                       a frameless window full resize + Windows Snap.
 
-Why WndProc subclassing for the font?
---------------------------------------
-DWM attributes control color and material (Mica/Acrylic), but the caption
-*font* is owned entirely by Windows.  The only way to change it is to
-intercept the paint messages Windows sends to the window's message handler
-(WndProc), let Windows draw the NC area normally, then immediately overdraw
-the caption text area with our own font.
+Why WM_NCHITTEST for resize?
+-----------------------------
+A frameless window has no visible border, so Windows never sends resize
+cursors and never starts a resize drag.  But we can intercept WM_NCHITTEST
+and return HTLEFT / HTRIGHT / etc. when the cursor is near an edge.
+Windows then starts a native resize exactly as if the window had a real
+frame — including snap-to-edge, snap-to-corner, and resize cursors.
 
-The subclassing pattern:
-  1. Call SetWindowLongPtrW(GWLP_WNDPROC, new_proc) — swaps the handler
-  2. In new_proc, forward every message to the original handler first
-  3. After WM_NCPAINT / WM_NCACTIVATE, overdraw the caption text
-  4. Keep a Python reference to the callback — if GC collects it, the
-     function pointer becomes a dangling pointer and Windows crashes.
+Why does drag-to-snap still work?
+----------------------------------
+Snap is triggered by WM_NCLBUTTONDOWN(HTCAPTION), not by WM_NCHITTEST.
+WebView2 sends that message automatically when the user starts a drag on
+any element marked -webkit-app-region:drag.  Our WndProc only touches
+WM_NCHITTEST, so the two mechanisms never interfere.
 
 Public API
 ----------
-    apply_titlebar_style(
-        "Weekly Fetch",          # window title or HWND
-        icon_path="ui/logo.ico"  # optional path to .ico file
-    )
+    apply_titlebar_style("Weekly Fetch", icon_path="ui/logo.ico")
 """
 
 import ctypes
@@ -41,26 +38,36 @@ if sys.platform != "win32":
 else:
     _dwm    = ctypes.windll.dwmapi
     _user32 = ctypes.windll.user32
-    _gdi32  = ctypes.windll.gdi32
 
-    # ── Fix pointer-sized types (ctypes defaults to c_int = 32-bit, wrong on x64) ──
-    _user32.SetWindowLongPtrW.restype  = ctypes.c_ssize_t
-    _user32.CallWindowProcW.restype    = ctypes.c_ssize_t
-    _user32.CallWindowProcW.argtypes   = [
-        ctypes.c_ssize_t,        # lpPrevWndFunc — stored as integer, not a live pointer
+    # Fix pointer-sized return types — ctypes defaults to c_int (32-bit),
+    # which silently truncates 64-bit pointers on x64 and causes crashes.
+    _user32.FindWindowW.restype       = ctypes.c_ssize_t
+    _user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    _user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+    _user32.CallWindowProcW.restype   = ctypes.c_ssize_t
+    _user32.CallWindowProcW.argtypes  = [
+        ctypes.c_ssize_t,        # lpPrevWndFunc (stored as integer, not live pointer)
         ctypes.wintypes.HWND,
         ctypes.c_uint,
         ctypes.wintypes.WPARAM,
         ctypes.wintypes.LPARAM,
     ]
 
+    # GetDpiForWindow is Win10+ — fall back to 96 (100%) on older builds.
+    try:
+        _user32.GetDpiForWindow.restype = ctypes.c_uint
+        _user32.GetDpiForWindow.argtypes = [ctypes.wintypes.HWND]
+        def _dpi(hwnd): return _user32.GetDpiForWindow(hwnd) or 96
+    except AttributeError:
+        def _dpi(hwnd): return 96  # type: ignore
+
+    # Titlebar geometry (must match CSS tokens: --titlebar-h: 36px, 3×46px buttons)
+    _TB_H_CSS      = 36    # CSS px — titlebar height
+    _CONTROLS_W_CSS = 138  # CSS px — 3 window-control buttons × 46px
+
     # ── DWM attribute constants ───────────────────────────────────────────────
-    _DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-    _DWMWA_BORDER_COLOR            = 34
-    _DWMWA_CAPTION_COLOR           = 35
-    _DWMWA_TEXT_COLOR              = 36
-    _DWMWA_SYSTEMBACKDROP_TYPE     = 38
-    _DWMSBT_DISABLE                = 1   # no Mica/Acrylic (needed to let caption color show)
+    _DWMWA_USE_IMMERSIVE_DARK_MODE = 20   # dark scrollbars, caret, chrome  Win10 20H1+
+    _DWMWA_BORDER_COLOR            = 34   # 1px window border accent color   Win11+
 
     # ── Icon constants ────────────────────────────────────────────────────────
     _WM_SETICON      = 0x0080
@@ -70,40 +77,46 @@ else:
     _LR_LOADFROMFILE = 0x0010
     _LR_DEFAULTSIZE  = 0x0040
 
-    # ── WndProc / GDI constants ───────────────────────────────────────────────
-    _WM_NCPAINT      = 0x0085   # repaint the non-client area
-    _WM_NCACTIVATE   = 0x0086   # caption switches active↔inactive
-    _WM_DESTROY      = 0x0002   # window being destroyed — restore old WndProc
-    _GWLP_WNDPROC    = -4       # index for SetWindowLongPtrW to swap WndProc
-    _FW_NORMAL       = 400
-    _DEFAULT_CHARSET = 1
-    _FIXED_PITCH     = 1        # request a monospace font family
-    _TRANSPARENT     = 1        # SetBkMode: don't paint text background
-    _DT_LEFT_VCENTER_SINGLE = 0x0024  # DT_LEFT(0) | DT_VCENTER(4) | DT_SINGLELINE(0x20)
+    # ── Window style constants (for proper maximize behaviour) ────────────────
+    _GWL_STYLE          = -16
+    _WS_CAPTION         = 0x00C00000   # title bar + border
+    _WS_THICKFRAME      = 0x00040000   # resizable frame
+    _SWP_NOMOVE         = 0x0002
+    _SWP_NOSIZE         = 0x0001
+    _SWP_NOZORDER       = 0x0004
+    _SWP_FRAMECHANGED   = 0x0020       # re-evaluate frame after style change
+    _SM_CYFRAME         = 33           # GetSystemMetrics: vertical frame thickness
+    _SM_CXPADDEDBORDER  = 92           # GetSystemMetrics: padded border width
 
-    # System metric indices
-    _SM_CYCAPTION      = 4
-    _SM_CXSIZE         = 30   # width of caption buttons (min/max/close)
-    _SM_CXSIZEFRAME    = 32
-    _SM_CYSIZEFRAME    = 33
-    _SM_CXPADDEDBORDER = 92
+    # ── WndProc / hit-test constants ──────────────────────────────────────────
+    _WM_NCCALCSIZE    = 0x0083
+    _WM_NCHITTEST     = 0x0084
+    _WM_NCLBUTTONDOWN = 0x00A1
+    _WM_DESTROY       = 0x0002
+    _GWLP_WNDPROC     = -4       # index for SetWindowLongPtrW
 
-    # ── COLORREF helper ───────────────────────────────────────────────────────
-    # Win32 colors are 0x00BBGGRR — Blue and Red are SWAPPED vs HTML #RRGGBB.
+    # Non-client hit-test return values
+    _HTCAPTION     = 2    # draggable caption area
+    _HTLEFT        = 10
+    _HTRIGHT       = 11
+    _HTTOP         = 12
+    _HTTOPLEFT     = 13
+    _HTTOPRIGHT    = 14
+    _HTBOTTOM      = 15
+    _HTBOTTOMLEFT  = 16
+    _HTBOTTOMRIGHT = 17
+
+    # Resize grab zone width in physical pixels.
+    # 10px works well at both 100% and 150% DPI.
+    _BORDER = 10
+
+    # ── Color helpers ─────────────────────────────────────────────────────────
+    # Win32 COLORREF = 0x00BBGGRR — Blue and Red are swapped vs HTML #RRGGBB.
     def _rgb(r: int, g: int, b: int) -> int:
         return (b << 16) | (g << 8) | r
 
-    # Palette derived from CSS design tokens (oklch → approximate sRGB):
-    #
-    #   --bg-surface  oklch(10%  0.035 285) → #100d1f  (mid-dark purple, caption bg)
-    #   --text-1      oklch(97%  0.012 285) → #e8e3f5  (lavender-white, caption text)
-    #   --accent      oklch(62%  0.210 285) → #6a3cc8  (vivid violet, window border)
-    #
-    # Caption is a noticeable purple rather than near-black so it reads as
-    # clearly custom against both light-mode and dark-mode system defaults.
-    _COLOR_CAPTION = _rgb(0x10, 0x0d, 0x1f)
-    _COLOR_TEXT    = _rgb(0xe8, 0xe3, 0xf5)
-    _COLOR_BORDER  = _rgb(0x6a, 0x3c, 0xc8)
+    # --accent oklch(62% 0.210 285) ≈ #6a3cc8
+    _COLOR_BORDER = _rgb(0x6a, 0x3c, 0xc8)
 
     # ── DWM attribute setter ──────────────────────────────────────────────────
     def _set_attr(hwnd: int, attr: int, value: int) -> bool:
@@ -116,178 +129,162 @@ else:
 
     # ── Icon installer ────────────────────────────────────────────────────────
     def _install_icon(hwnd: int, path: str) -> None:
-        """Load an .ico and apply it to the titlebar (small) and taskbar (big)."""
         hbig = _user32.LoadImageW(
             None, path, _IMAGE_ICON, 0, 0, _LR_LOADFROMFILE | _LR_DEFAULTSIZE,
         )
         hsmall = _user32.LoadImageW(
             None, path, _IMAGE_ICON, 16, 16, _LR_LOADFROMFILE,
         )
-        if hbig:
-            _user32.SendMessageW(hwnd, _WM_SETICON, _ICON_BIG,   hbig)
-        if hsmall:
-            _user32.SendMessageW(hwnd, _WM_SETICON, _ICON_SMALL, hsmall)
+        if hbig:   _user32.SendMessageW(hwnd, _WM_SETICON, _ICON_BIG,   hbig)
+        if hsmall: _user32.SendMessageW(hwnd, _WM_SETICON, _ICON_SMALL, hsmall)
 
-    # ── WndProc subclass for custom caption font ──────────────────────────────
+    # ── Frame style fixer ─────────────────────────────────────────────────────
+    def _ensure_frame_styles(hwnd: int) -> None:
+        """Add WS_CAPTION | WS_THICKFRAME to a frameless WS_POPUP window.
 
-    # Keeps (old_proc_address, callback_ref) alive per HWND.
-    # The callback_ref MUST be held here — if Python GC collects it, the
-    # function pointer becomes a dangling pointer and Windows will crash.
+        pywebview creates a WS_POPUP window (no frame).  WS_POPUP maximizes to
+        the full screen rect, hiding the taskbar.  Adding WS_CAPTION and
+        WS_THICKFRAME tells Windows to use the work-area rect instead, so the
+        taskbar stays visible — exactly how Electron / Discord handle this.
+
+        WM_NCCALCSIZE in our WndProc returns 0 so the frame chrome is never
+        drawn; we get the proper maximize behaviour without any visible frame.
+        """
+        style = _user32.GetWindowLongPtrW(hwnd, _GWL_STYLE)
+        new_style = style | _WS_CAPTION | _WS_THICKFRAME
+        if new_style != style:
+            _user32.SetWindowLongPtrW(hwnd, _GWL_STYLE, new_style)
+            # SWP_FRAMECHANGED forces Windows to re-evaluate the NC area
+            # so the style change takes effect immediately.
+            _user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
+                _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_FRAMECHANGED)
+
+    # ── WndProc subclass for resize hit-testing ───────────────────────────────
+
+    # Must hold (old_proc_address, callback_ref) alive.
+    # If Python GC collects the callback, the function pointer becomes a
+    # dangling pointer and Windows crashes the next time it calls the proc.
     _subclassed: dict = {}
 
-    # Reentrancy guard — HWNDs currently inside our NC-paint handler.
-    #
-    # Why this is needed:
-    #   CallWindowProcW(old, WM_NCPAINT)  ← we call this
-    #     → DefWindowProc internally calls SendMessage(WM_NCACTIVATE)
-    #       → our _proc is entered again (same thread, synchronous)
-    #         → CallWindowProcW(old, WM_NCACTIVATE)
-    #           → DefWindowProc internally calls SendMessage(WM_NCPAINT)
-    #             → infinite loop / stack overflow
-    #
-    # Fix: if the HWND is already in this set, skip the custom overdraw
-    # and just forward the message — breaking the cycle.
-    _nc_active: set = set()
-
     _WNDPROC = ctypes.WINFUNCTYPE(
-        ctypes.c_ssize_t,       # LRESULT return
+        ctypes.c_ssize_t,
         ctypes.wintypes.HWND,
-        ctypes.c_uint,          # message
+        ctypes.c_uint,
         ctypes.wintypes.WPARAM,
         ctypes.wintypes.LPARAM,
     )
 
-    def _paint_caption_text(hwnd: int, title: str) -> None:
-        """Overdraw the caption text area with Consolas after Windows paints it."""
-        hdc = _user32.GetWindowDC(hwnd)
-        if not hdc:
-            return
-        try:
-            cap_h = _user32.GetSystemMetrics(_SM_CYCAPTION)
-            fr_y  = (_user32.GetSystemMetrics(_SM_CYSIZEFRAME)
-                     + _user32.GetSystemMetrics(_SM_CXPADDEDBORDER))
-            btn_w = _user32.GetSystemMetrics(_SM_CXSIZE) * 3  # 3 caption buttons
-
-            wr = ctypes.wintypes.RECT()
-            _user32.GetWindowRect(hwnd, ctypes.byref(wr))
-            win_w = wr.right - wr.left
-
-            # The band we own: from the app icon to just before the buttons.
-            # x=32 clears past the 16px icon + frame padding.
-            x1, x2 = 32, win_w - btn_w
-            y1, y2 = fr_y, fr_y + cap_h
-
-            # 1. Fill with caption background to erase Windows' Segoe UI title.
-            er = ctypes.wintypes.RECT()
-            er.left, er.top, er.right, er.bottom = x1, y1, x2, y2
-            hbr = _gdi32.CreateSolidBrush(_COLOR_CAPTION)
-            _user32.FillRect(hdc, ctypes.byref(er), hbr)
-            _gdi32.DeleteObject(hbr)
-
-            # 2. Draw title in Consolas.
-            font_px = cap_h - 6
-            hfont = _gdi32.CreateFontW(
-                -font_px, 0, 0, 0,           # height (negative = char height), width, escapement, orientation
-                _FW_NORMAL, 0, 0, 0,         # weight, italic, underline, strikeout
-                _DEFAULT_CHARSET, 0, 0, 0,   # charset, output precision, clip precision, quality
-                _FIXED_PITCH, "Consolas",    # pitch + face name
-            )
-            old_font = _gdi32.SelectObject(hdc, hfont)
-            _gdi32.SetTextColor(hdc, _COLOR_TEXT)
-            _gdi32.SetBkMode(hdc, _TRANSPARENT)
-
-            tr = ctypes.wintypes.RECT()
-            tr.left, tr.top, tr.right, tr.bottom = x1, y1, x2, y2
-            _user32.DrawTextW(hdc, title, -1, ctypes.byref(tr), _DT_LEFT_VCENTER_SINGLE)
-
-            _gdi32.SelectObject(hdc, old_font)
-            _gdi32.DeleteObject(hfont)
-        finally:
-            _user32.ReleaseDC(hwnd, hdc)
-
-    def _install_caption_font(hwnd: int, title: str) -> None:
-        """Subclass the window WndProc to draw Consolas caption text."""
+    def _install_resize_hittest(hwnd: int) -> None:
+        """Subclass the WndProc to return resize hit codes for window edges."""
 
         def _proc(h, msg, wp, lp):
             hk  = int(h)
             old, _ = _subclassed.get(hk, (0, None))
-
-            # Guard: old=0 means we're not properly subclassed; fall back safely.
             if not old:
                 return _user32.DefWindowProcW(h, msg, wp, lp)
 
-            is_nc = msg in (_WM_NCPAINT, _WM_NCACTIVATE)
+            if msg == _WM_NCCALCSIZE and wp:
+                # Returning 0 makes the client area equal the full window rect,
+                # hiding the native title bar and frame chrome.
+                #
+                # When maximized, Windows positions a WS_THICKFRAME window with
+                # ~8px negative margins so the drop-shadow is off-screen.  The
+                # vertical frame + padding must be added back at the top so that
+                # content doesn't spill under the taskbar.
+                if _user32.IsZoomed(h):
+                    frame_y = _user32.GetSystemMetrics(_SM_CYFRAME)
+                    padding  = _user32.GetSystemMetrics(_SM_CXPADDEDBORDER)
+                    rect = ctypes.cast(lp, ctypes.POINTER(ctypes.wintypes.RECT))
+                    rect[0].top += frame_y + padding
+                return 0
 
-            if is_nc and hk in _nc_active:
-                # Re-entrant NC message — forward only, no custom draw.
-                return _user32.CallWindowProcW(old, h, msg, wp, lp)
+            elif msg == _WM_NCHITTEST:
+                # lParam low word = cursor x, high word = cursor y (screen coords).
+                # c_int16 handles sign extension for negative coords on multi-monitors.
+                cx = ctypes.c_int16(lp         & 0xFFFF).value
+                cy = ctypes.c_int16((lp >> 16) & 0xFFFF).value
 
-            if is_nc:
-                _nc_active.add(hk)
+                wr = ctypes.wintypes.RECT()
+                _user32.GetWindowRect(h, ctypes.byref(wr))
 
-            try:
-                result = _user32.CallWindowProcW(old, h, msg, wp, lp)
+                left   = cx - wr.left   < _BORDER
+                right  = wr.right  - cx < _BORDER
+                top    = cy - wr.top    < _BORDER
+                bottom = wr.bottom - cy < _BORDER
 
-                if is_nc:
-                    _paint_caption_text(hk, title)
-                elif msg == _WM_DESTROY:
-                    if hk in _subclassed:
-                        _user32.SetWindowLongPtrW(h, _GWLP_WNDPROC, _subclassed[hk][0])
-                        del _subclassed[hk]
-                    _nc_active.discard(hk)
+                if top    and left:  return _HTTOPLEFT
+                if top    and right: return _HTTOPRIGHT
+                if bottom and left:  return _HTBOTTOMLEFT
+                if bottom and right: return _HTBOTTOMRIGHT
+                if top:              return _HTTOP
+                if bottom:           return _HTBOTTOM
+                if left:             return _HTLEFT
+                if right:            return _HTRIGHT
 
-                return result
-            finally:
-                if is_nc:
-                    _nc_active.discard(hk)
+                # Titlebar drag area → HTCAPTION so Windows handles both
+                # drag-to-move AND Snap natively.  Skip the controls zone
+                # (right 138 CSS px) so the buttons still receive clicks.
+                scale       = _dpi(h) / 96
+                tb_h_px     = int(_TB_H_CSS       * scale)
+                controls_px = int(_CONTROLS_W_CSS * scale)
+                if cy - wr.top < tb_h_px and wr.right - cx > controls_px:
+                    return _HTCAPTION
+
+            elif msg == _WM_NCLBUTTONDOWN:
+                # WinForms' WndProc does NOT forward WM_NCLBUTTONDOWN to
+                # DefWindowProc for FormBorderStyle.None windows, so resize
+                # and caption-drag loops never start.  We bypass WinForms and
+                # call DefWindowProc directly for all non-client button codes.
+                _resize_codes = (
+                    _HTCAPTION,
+                    _HTLEFT, _HTRIGHT, _HTTOP, _HTTOPLEFT, _HTTOPRIGHT,
+                    _HTBOTTOM, _HTBOTTOMLEFT, _HTBOTTOMRIGHT,
+                )
+                if wp in _resize_codes:
+                    return _user32.DefWindowProcW(h, msg, wp, lp)
+
+            elif msg == _WM_DESTROY:
+                if hk in _subclassed:
+                    _user32.SetWindowLongPtrW(h, _GWLP_WNDPROC, _subclassed[hk][0])
+                    del _subclassed[hk]
+
+            return _user32.CallWindowProcW(old, h, msg, wp, lp)
 
         cb  = _WNDPROC(_proc)
         old = _user32.SetWindowLongPtrW(hwnd, _GWLP_WNDPROC, cb)
         _subclassed[hwnd] = (old, cb)
 
-        # Trigger one immediate repaint so the font appears right away.
-        _user32.SendMessageW(hwnd, _WM_NCPAINT, 1, 0)
-
     # ── Public API ────────────────────────────────────────────────────────────
     def apply_titlebar_style(hwnd_or_title, *, icon_path=None) -> None:
-        """Apply DWM colors, icon, and Consolas caption font to the window.
+        """Apply DWM styling, window icon, and resize hit-testing.
 
         Args:
             hwnd_or_title: window title string (FindWindowW) or HWND integer.
-            icon_path:     optional path to an .ico file.
+            icon_path:     optional path to .ico file for titlebar + taskbar icon.
         """
         hwnd = (_user32.FindWindowW(None, hwnd_or_title)
                 if isinstance(hwnd_or_title, str) else int(hwnd_or_title))
         if not hwnd:
             return
 
-        title_text = (hwnd_or_title if isinstance(hwnd_or_title, str)
-                      else _get_window_text(hwnd))
-
         build = sys.getwindowsversion().build
 
-        # Step 1 — Dark chrome (scrollbars, caret, selection handles).
+        # Dark chrome — scrollbars, caret, selection handles use light-on-dark.
         if build >= 19041:
             _set_attr(hwnd, _DWMWA_USE_IMMERSIVE_DARK_MODE, 1)
 
-        # Step 2 — Custom solid caption + text + border colors.
-        # We explicitly disable Mica here because DWMWA_SYSTEMBACKDROP_TYPE
-        # (Mica) takes priority over DWMWA_CAPTION_COLOR — you can't have both.
+        # Violet accent border around the window edge.
         if build >= 22000:
-            _set_attr(hwnd, _DWMWA_CAPTION_COLOR, _COLOR_CAPTION)
-            _set_attr(hwnd, _DWMWA_TEXT_COLOR,    _COLOR_TEXT)
-            _set_attr(hwnd, _DWMWA_BORDER_COLOR,  _COLOR_BORDER)
-        if build >= 22621:
-            _set_attr(hwnd, _DWMWA_SYSTEMBACKDROP_TYPE, _DWMSBT_DISABLE)
+            _set_attr(hwnd, _DWMWA_BORDER_COLOR, _COLOR_BORDER)
 
-        # Step 3 — Window icon (titlebar + taskbar).
+        # Window icon (titlebar corner + taskbar button).
         if icon_path:
             _install_icon(hwnd, str(icon_path))
 
-        # Step 4 — Custom Consolas caption font via WndProc subclass.
-        _install_caption_font(hwnd, title_text)
+        # Add WS_CAPTION | WS_THICKFRAME so maximize respects the taskbar.
+        # Must happen before WndProc installation so the style is set before
+        # our WM_NCCALCSIZE handler fires.
+        _ensure_frame_styles(hwnd)
 
-    def _get_window_text(hwnd: int) -> str:
-        buf = ctypes.create_unicode_buffer(256)
-        _user32.GetWindowTextW(hwnd, buf, 256)
-        return buf.value
+        # Resize borders via WndProc hit-testing.
+        _install_resize_hittest(hwnd)

@@ -18,6 +18,19 @@
 <!-- Toast notifications -->
 <div id="toast-container" role="status" aria-live="polite"></div>
 
+<!-- ── Custom title bar ──────────────────────────────────────────────── -->
+<div id="titlebar">
+  <div id="titlebar-drag">
+    <img src="/static/logo.svg" class="tb-icon" style="height:16px;width:16px;display:inline-block;vertical-align:middle;">
+    <span class="tb-title">Weekly Fetch</span>
+  </div>
+  <div id="titlebar-controls">
+    <button class="tb-btn tb-min" title="Minimize" onclick="tbAction('minimize')">&#x2212;</button>
+    <button class="tb-btn tb-max" title="Maximize" onclick="tbAction('toggle_maximize')">&#x25A1;</button>
+    <button class="tb-btn tb-close" title="Close" onclick="tbAction('close_window')">&#x2715;</button>
+  </div>
+</div>
+
 <!-- ── App body ──────────────────────────────────────────────────────── -->
 <div id="app-body">
 
@@ -394,6 +407,11 @@ MathJax = {
 };
 
 // ── Title bar window control bridge ───────────────────────────────────────────
+function tbAction(method) {
+  if (window.pywebview && window.pywebview.api) {
+    window.pywebview.api[method]();
+  }
+}
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

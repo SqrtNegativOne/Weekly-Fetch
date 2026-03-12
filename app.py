@@ -29,6 +29,31 @@ from server import create_app
 from dwm import apply_titlebar_style
 
 
+class WindowApi:
+    """Python methods callable from JS via window.pywebview.api.*"""
+    def __init__(self):
+        self._win = None
+
+    def set_window(self, win):
+        self._win = win
+
+    def minimize(self):
+        if self._win: self._win.minimize()
+
+    def toggle_maximize(self):
+        if self._win:
+            import ctypes
+            hwnd = self._win.native.Handle.ToInt64()
+            if hwnd and ctypes.windll.user32.IsZoomed(hwnd):
+                self._win.restore()
+            else:
+                self._win.maximize()
+
+    def close_window(self):
+        if self._win: self._win.destroy()
+
+
+
 def _find_free_port() -> int:
     """Ask the OS to give us a free TCP port.
 
@@ -102,26 +127,26 @@ def main():
     # before we tell pywebview to open the URL.
     time.sleep(0.8)
 
+    api = WindowApi()
     win = webview.create_window(
         title="Weekly Fetch",
         url=f"http://127.0.0.1:{port}",
         width=1280,
         height=860,
         min_size=(800, 600),
-        frameless=False,
+        frameless=True,
+        easy_drag=False,   # -webkit-app-region:drag handles this natively
         text_select=True,
+        js_api=api,
     )
+    api.set_window(win)
 
-    # Apply DWM styling (dark caption colors, Consolas font, app icon).
-    # Must run after events.shown — the HWND isn't valid until the window appears.
-    win.events.shown += lambda: apply_titlebar_style("Weekly Fetch", icon_path=icon_path)
+    win.events.shown += lambda: apply_titlebar_style(win.native.Handle.ToInt64(), icon_path=icon_path)
 
-    # maximize() fills the screen while keeping the taskbar visible.
-    # toggle_fullscreen() is true kiosk mode (hides taskbar) — wrong for start_fullscreen.
     if start_fullscreen:
         win.events.shown += lambda: win.maximize()
 
-    webview.start(icon="ui/logo.ico")   # blocks until the window is closed
+    webview.start(icon=icon_path)   # blocks until the window is closed
 
 
 if __name__ == "__main__":

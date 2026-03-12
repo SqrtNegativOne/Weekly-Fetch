@@ -10,6 +10,10 @@
   --bg-hover:    oklch(100% 0 0 / 0.09);
   --bg-muted:    oklch(100% 0 0 / 0.04);
 
+  /* Title bar */
+  --bg-titlebar: oklch(4.5% 0.030 285 / 0.97);
+  --titlebar-h:  36px;
+
   /* Overlay backgrounds (cool purple tints, all same hue family) */
   --bg-topbar:      oklch(5.5% 0.032 285 / 0.65);
   --bg-bottombar:   oklch(5.5% 0.032 285 / 0.55);

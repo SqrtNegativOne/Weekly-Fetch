@@ -20,6 +20,10 @@ Maybe all videos are downloaded using yt downloader; maybe there is a setting to
 
 ---
 
+Add Hacker news support: A selected number of articles from the Front page. User specifies they want to see X number of articles from hackernews with comments daily. Hackernews already sorts
+
+---
+
 # Notetaking and todos
 
 Notes and Todos have to be processed as well: so you have two types of those also; pending, and archived.
@@ -27,12 +31,17 @@ Notes and Todos have to be processed as well: so you have two types of those als
 When there are artifacts due:
 - First card gives details on the number of artifacts, sources.
 - Middle cards show each artifact.
-- Last card shows all the *pending* notes and todos.
+- Last card shows all the *pending* notes and todos, from any artifacts (whether they were shown in this session or not).
+When there are no artifacts due: check if there are pending notes or todos, and show those.
+When neither: "You are free! [then smaller text:] You have no pending artifacts, notes, or todos!”
 
 The Archive page not only notes archived artifacts, but also archived notes and todos.
 
-## Ambitious:
+Archiving an artifact does not archive its related notes or todos.
 
+You do not need to care about database migration or backwards compatibility; refactor as desired.
+
+## Ambitious: (maybe for a later stage)
 The app will integrate with software like Notion, Super Productivity, Obsidian etc.; all todos can be easily exported into there.
 
 ---
