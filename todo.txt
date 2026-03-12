@@ -8,9 +8,6 @@ Posts that start with an image, are shown only as an image; the content is gone.
 
 ---
 
-after the above:
-Decide on a better, calmer, nicer colour palette.
-actually:
 Add an option to change themes of the app in settings.
 Then, create multiple colour designs.
 this should allow fast iteration in the design process.

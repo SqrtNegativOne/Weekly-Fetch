@@ -185,3 +185,7 @@ output/*
 bash.exe.stackdump
 
 todo.txt
+
+.superpowers/
+
+todo.txt
