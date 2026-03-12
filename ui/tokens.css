@@ -1,0 +1,109 @@
+/* ═══════════════════════════════════════════════════
+   Weekly Fetch — Design Tokens
+   ═══════════════════════════════════════════════════ */
+
+:root {
+  /* Surfaces */
+  --bg-deep:     oklch(8.5% 0.020 285);
+  --bg-surface:  oklch(10% 0.035 285 / 0.55);
+  --bg-elevated: oklch(100% 0 0 / 0.06);
+  --bg-hover:    oklch(100% 0 0 / 0.09);
+  --bg-muted:    oklch(100% 0 0 / 0.04);
+
+  /* Overlay backgrounds (cool purple tints, all same hue family) */
+  --bg-titlebar:    oklch(4.5% 0.030 285 / 0.97);
+  --bg-topbar:      oklch(5.5% 0.032 285 / 0.65);
+  --bg-bottombar:   oklch(5.5% 0.032 285 / 0.55);
+  --bg-sidebar:     oklch(5.5% 0.032 285 / 0.72);
+  --bg-fetch-panel: oklch(5.5% 0.032 285 / 0.60);
+  --bg-select:      oklch(13% 0.045 285);
+
+  /* Text — 4 levels + body (cool lavender-white) */
+  --text-1:    oklch(97% 0.012 285 / 0.93);
+  --text-2:    oklch(97% 0.012 285 / 0.60);
+  --text-3:    oklch(97% 0.012 285 / 0.38);
+  --text-4:    oklch(97% 0.012 285 / 0.18);
+  --text-body: oklch(97% 0.012 285 / 0.82);
+
+  /* Accent — rich violet */
+  --accent:            oklch(62% 0.210 285);
+  --accent-light:      oklch(74% 0.170 285);
+  --accent-surface:    oklch(62% 0.210 285 / 0.14);
+  --accent-border:     oklch(62% 0.210 285 / 0.28);
+  --accent-glow:       oklch(62% 0.210 285 / 0.18);
+  --accent-selection:  oklch(62% 0.210 285 / 0.35);
+  --accent-blockquote: oklch(62% 0.210 285 / 0.45);
+
+  /* Platform colors */
+  --reddit:    oklch(59% 0.222 31);
+  --bluesky:   oklch(62% 0.183 257);
+  --tumblr:    oklch(52% 0.089 263);
+  --instagram: oklch(55% 0.196 359);
+  --mastodon:  oklch(56% 0.214 279);
+  --twitter:   oklch(68% 0.122 251);
+
+  /* Platform badge text (light variants for dark bg) */
+  --bluesky-text:   oklch(72% 0.12 254);
+  --tumblr-text:    oklch(70% 0.07 262);
+  --instagram-text: oklch(72% 0.14 340);
+  --mastodon-text:  oklch(72% 0.12 275);
+  --twitter-text:   oklch(80% 0.09 249);
+  --reddit-text:    oklch(74% 0.14 40);
+
+  /* Status */
+  --success:        oklch(70% 0.144 163);
+  --success-text:   oklch(85% 0.093 162);
+  --success-bg:     oklch(70% 0.144 163 / 0.18);
+  --success-border: oklch(70% 0.144 163 / 0.30);
+  --error:          oklch(60% 0.200 25);
+  --error-text:     oklch(72% 0.144 25);
+  --error-bg:       oklch(60% 0.200 25 / 0.18);
+  --error-border:   oklch(60% 0.200 25 / 0.30);
+  --error-strong:   oklch(60% 0.200 25 / 0.75);
+  --warning-text:   oklch(93% 0.107 91);
+  --warning-bg:     oklch(93% 0.107 91 / 0.18);
+
+  /* Border — 3 levels */
+  --border:        oklch(100% 0 0 / 0.07);
+  --border-light:  oklch(100% 0 0 / 0.12);
+  --border-subtle: oklch(100% 0 0 / 0.05);
+
+  /* Blob backgrounds (cool purple family) */
+  --blob-1: oklch(18% 0.045 285);
+  --blob-2: oklch(11% 0.028 285);
+  --blob-3: oklch(28% 0.070 285);
+
+  /* Scrollbar */
+  --scrollbar-thumb:       oklch(100% 0 0 / 0.10);
+  --scrollbar-thumb-hover: oklch(100% 0 0 / 0.18);
+
+  /* Tab */
+  --tab-active-bg: oklch(100% 0 0 / 0.92);
+
+  /* Radius — 4 stops */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-full: 100px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: 'Lora', Georgia, "Times New Roman", serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.7rem;
+  --text-sm: 0.8rem;
+  --text-base: 0.9rem;
+  --text-lg: 1.15rem;
+  --text-xl: 1.5rem;
+
+  /* Title bar height */
+  --titlebar-h: 36px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur: 0.18s;
+
+  /* Shadows */
+  --shadow-card: 0 20px 60px oklch(0% 0 0 / 0.4), 0 1px 0 oklch(100% 0 0 / 0.06) inset;
+  --shadow-toast: 0 8px 32px oklch(0% 0 0 / 0.30);
+}

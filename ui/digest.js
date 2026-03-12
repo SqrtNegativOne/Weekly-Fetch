@@ -13,7 +13,8 @@
  *   j / ↓        scroll down
  *   k / ↑        scroll up
  *   c            toggle comments
- *   Ctrl+N       focus notes sidebar
+ *   Ctrl+N       focus notes sidebar (again or Esc to exit)
+ *   Ctrl+T       focus todos sidebar (again or Esc to exit)
  *   Enter        archive current & next (skips cover)
  *   Ctrl+Z       undo last action
  */
@@ -378,6 +379,10 @@ window.initDigestViewer = function (ARTIFACTS) {
 
     rebuildTabs();
     if (current >= POSTS.length) current = POSTS.length - 1;
+    const cardEl = document.getElementById('card');
+    cardEl.classList.remove('anim-fwd', 'anim-bwd');
+    void cardEl.offsetWidth; // force reflow so the class removal is committed
+    cardEl.classList.add('anim-fwd');
     renderCard(current);
   }
 
@@ -446,8 +451,28 @@ window.initDigestViewer = function (ARTIFACTS) {
       e.preventDefault();
       const notesEl = document.getElementById('notes');
       if (notesEl && sidebarEl.style.display !== 'none') {
-        notesEl.focus();
-        notesEl.selectionStart = notesEl.selectionEnd = notesEl.value.length;
+        if (document.activeElement === notesEl) {
+          notesEl.blur();
+          document.getElementById('card-scroll').focus();
+        } else {
+          notesEl.focus();
+          notesEl.selectionStart = notesEl.selectionEnd = notesEl.value.length;
+        }
+      }
+      return;
+    }
+
+    if (e.ctrlKey && (e.key === 't' || e.key === 'T')) {
+      e.preventDefault();
+      const todosEl = document.getElementById('todos');
+      if (todosEl && sidebarEl.style.display !== 'none') {
+        if (document.activeElement === todosEl) {
+          todosEl.blur();
+          document.getElementById('card-scroll').focus();
+        } else {
+          todosEl.focus();
+          todosEl.selectionStart = todosEl.selectionEnd = todosEl.value.length;
+        }
       }
       return;
     }
@@ -574,6 +599,12 @@ window.initDigestViewer = function (ARTIFACTS) {
   }
 
   function _notesKeydown(e) {
+    if (e.key === 'Escape' || (e.ctrlKey && (e.key === 'n' || e.key === 'N'))) {
+      e.preventDefault(); e.stopPropagation();
+      e.target.blur();
+      document.getElementById('card-scroll').focus();
+      return;
+    }
     if (e.key === 'Enter' && !e.ctrlKey) {
       e.preventDefault(); e.stopPropagation();
       var ta = e.target, start = ta.selectionStart;
@@ -584,6 +615,12 @@ window.initDigestViewer = function (ARTIFACTS) {
   }
 
   function _todosKeydown(e) {
+    if (e.key === 'Escape' || (e.ctrlKey && (e.key === 't' || e.key === 'T'))) {
+      e.preventDefault(); e.stopPropagation();
+      e.target.blur();
+      document.getElementById('card-scroll').focus();
+      return;
+    }
     if (e.key === 'Enter' && !e.ctrlKey) e.stopPropagation();
   }
 

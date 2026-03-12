@@ -2,14 +2,9 @@ Cold start problem:
 
 ---
 
-Have the original session have the P=process thing.
-
-When pressing Ctrl+N on the Notes section, the focus isn't shifted back to the cards (so a user can start browsing the artifacts normally again). Make it so that pressing Esc and Ctrl+N can escape from being focused in the notes section. Similar, Ctrl+T makes you focused on the Todo section, and to go back we can press Ctrl+T or press Esc.
 Be able to export notes more easily.
 
 Posts that start with an image, are shown only as an image; the content is gone.
-
-Check which files have gotten too large in the codebase, and refactor them.
 
 ---
 
@@ -27,8 +22,6 @@ Ask me about any details you feel should be specified.
 No need to care about migration or backwards compatibility; just delete all data.
 
 ---
-
-Check for colours that are hardcoded. Shift them to a CSS variable. Use oklch instead of current rgb.
 
 after the above:
 Decide on a better, calmer, nicer colour palette.
