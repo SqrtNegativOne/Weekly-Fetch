@@ -118,7 +118,7 @@ function showToast(msg, type) {
 
 // ── View routing ──────────────────────────────────────────────────────────────
 
-var VIEWS = ['home', 'sources', 'archive', 'settings', 'about'];
+var VIEWS = ['home', 'sources', 'archive', 'usage', 'settings', 'about'];
 
 function showView(name) {
   VIEWS.forEach(function (v) {
@@ -240,6 +240,101 @@ function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Usage page ────────────────────────────────────────────────────────────────
+
+function formatDuration(seconds) {
+  if (seconds < 60) return seconds + 's';
+  var m = Math.floor(seconds / 60);
+  var s = seconds % 60;
+  if (m < 60) return m + 'm ' + s + 's';
+  var h = Math.floor(m / 60);
+  m = m % 60;
+  return h + 'h ' + m + 'm';
+}
+
+async function loadUsage() {
+  var stats;
+  try {
+    stats = await api('GET', '/api/usage/stats');
+  } catch (e) {
+    showToast('Failed to load usage: ' + e.message, 'error');
+    return;
+  }
+
+  // Summary cards
+  var summaryEl = document.getElementById('usage-summary');
+  summaryEl.innerHTML =
+    '<div class="usage-stat-card">' +
+      '<div class="usage-stat-value">' + formatDuration(stats.total_time_seconds) + '</div>' +
+      '<div class="usage-stat-label">Total time</div>' +
+    '</div>' +
+    '<div class="usage-stat-card">' +
+      '<div class="usage-stat-value">' + stats.total_sessions + '</div>' +
+      '<div class="usage-stat-label">Sessions</div>' +
+    '</div>' +
+    '<div class="usage-stat-card">' +
+      '<div class="usage-stat-value">' + stats.total_artifacts_viewed + '</div>' +
+      '<div class="usage-stat-label">Artifacts viewed</div>' +
+    '</div>';
+
+  // Time per source bars
+  var barsEl = document.getElementById('usage-source-bars');
+  if (!stats.per_source || stats.per_source.length === 0) {
+    barsEl.innerHTML = '<div class="usage-empty">No usage data yet.</div>';
+  } else {
+    var maxTime = Math.max.apply(null, stats.per_source.map(function (s) { return s.time_seconds; }));
+    if (maxTime === 0) maxTime = 1;
+    barsEl.innerHTML = stats.per_source.map(function (s) {
+      var pct = Math.round((s.time_seconds / maxTime) * 100);
+      var platformColor = 'var(--' + (s.platform || 'accent') + ', var(--accent))';
+      return '<div class="usage-bar-row">' +
+        '<div class="usage-bar-label">' + escHtml(s.source) + '</div>' +
+        '<div class="usage-bar-track">' +
+          '<div class="usage-bar-fill" style="width:' + pct + '%;background:' + platformColor + '"></div>' +
+        '</div>' +
+        '<div class="usage-bar-value">' + formatDuration(s.time_seconds) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Notes & Todos bars
+  var notesEl = document.getElementById('usage-notes-bars');
+  var withNotes = stats.per_source.filter(function (s) { return s.note_count > 0 || s.todo_count > 0; });
+  if (withNotes.length === 0) {
+    notesEl.innerHTML = '<div class="usage-empty">No notes or todos yet.</div>';
+  } else {
+    var maxNT = Math.max.apply(null, withNotes.map(function (s) { return s.note_count + s.todo_count; }));
+    if (maxNT === 0) maxNT = 1;
+    notesEl.innerHTML = withNotes.map(function (s) {
+      var total = s.note_count + s.todo_count;
+      var pct = Math.round((total / maxNT) * 100);
+      return '<div class="usage-bar-row">' +
+        '<div class="usage-bar-label">' + escHtml(s.source) + '</div>' +
+        '<div class="usage-bar-track">' +
+          '<div class="usage-bar-fill" style="width:' + pct + '%;background:var(--accent)"></div>' +
+        '</div>' +
+        '<div class="usage-bar-value">' + s.note_count + 'n / ' + s.todo_count + 't</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // Recent sessions
+  var sessEl = document.getElementById('usage-sessions-list');
+  if (!stats.recent_sessions || stats.recent_sessions.length === 0) {
+    sessEl.innerHTML = '<div class="usage-empty">No sessions recorded yet.</div>';
+  } else {
+    sessEl.innerHTML = stats.recent_sessions.map(function (s) {
+      var d = new Date(s.started_at);
+      var dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return '<div class="usage-session-row">' +
+        '<span class="usage-session-date">' + dateStr + '</span>' +
+        '<span class="usage-session-dur">' + formatDuration(s.duration_seconds) + '</span>' +
+        '<span class="usage-session-count">' + s.artifacts_viewed + ' viewed</span>' +
+      '</div>';
+    }).join('');
+  }
 }
 
 // ── Sources (was: Accounts) ───────────────────────────────────────────────────
@@ -551,10 +646,17 @@ document.addEventListener('DOMContentLoaded', function () {
   // Nav buttons with data-view
   document.querySelectorAll('.nav-btn[data-view]').forEach(function (btn) {
     btn.onclick = function () {
+      // Post usage session when leaving the home (viewer) view
+      var currentView = document.querySelector('.app-view.active');
+      if (currentView && currentView.id === 'view-home' && btn.dataset.view !== 'home') {
+        if (typeof window._postUsageSession === 'function') window._postUsageSession();
+      }
+
       showView(btn.dataset.view);
       if (btn.dataset.view === 'sources')  loadSources();
       if (btn.dataset.view === 'settings') loadSettings();
       if (btn.dataset.view === 'archive')  loadArchive('', '', 0, false);
+      if (btn.dataset.view === 'usage')    loadUsage();
       if (btn.dataset.view === 'home')     loadPending();
     };
   });

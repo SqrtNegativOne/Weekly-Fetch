@@ -43,7 +43,8 @@ if str(_SRC) not in sys.path:
 
 from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
 from db import (archive_artifact, get_archived, get_artifact, get_pending,
-                init_db, save_note, save_todo, unarchive_artifact)
+                get_usage_stats, init_db, save_note, save_todo,
+                save_usage_session, unarchive_artifact)
 from log import logger
 
 _UI = BUNDLE_DIR / "ui"
@@ -238,5 +239,27 @@ def create_app() -> FastAPI:
 
         threading.Thread(target=_worker, daemon=True).start()
         return {"ok": True, "msg": "Fetch started — check back in a minute."}
+
+    # ── Usage tracking ───────────────────────────────────────────────────
+    @app.post("/api/usage/session")
+    async def post_usage_session(request: Request) -> dict:
+        body = await request.json()
+        db = _db_path()
+        init_db(db)
+        save_usage_session(
+            db,
+            started_at=body.get("started_at", ""),
+            ended_at=body.get("ended_at", ""),
+            duration_seconds=int(body.get("duration_seconds", 0)),
+            artifacts_viewed=int(body.get("artifacts_viewed", 0)),
+            time_per_source_json=json.dumps(body.get("time_per_source", {})),
+        )
+        return {"ok": True}
+
+    @app.get("/api/usage/stats")
+    def usage_stats() -> dict:
+        db = _db_path()
+        init_db(db)
+        return get_usage_stats(db)
 
     return app

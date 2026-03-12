@@ -8,21 +8,6 @@ Posts that start with an image, are shown only as an image; the content is gone.
 
 ---
 
-Time spent on the app, and on each source is tracked. The user can see it on the Usage page. It also has statistics for the number of Todos or Notes taken per a Source's Artifacts. All this data is visualised in a new Usage page.
-
-When the app detects that the user has spent more than 20 minutes on the app and presses the enter or → or l key to go to the next page, a different page will open, which looks different from all the other Artifacts. It will read:
-"20-20-20" [larger than the usual post titles, title is in the middle]
-"After 20 minutes, see 20 yards away, for 20 seconds."
-[timer for 20 seconds]
-"Take a deep breath." [in italics]
-After the 20 seconds are over, the user will be allowed to move to the next Artifact. Until then they won't be able to.
-
-Ask me about any details you feel should be specified.
-
-No need to care about migration or backwards compatibility; just delete all data.
-
----
-
 after the above:
 Decide on a better, calmer, nicer colour palette.
 actually:

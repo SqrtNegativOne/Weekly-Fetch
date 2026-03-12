@@ -65,6 +65,90 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   let current = 0;
 
+  // ── Usage session tracking ─────────────────────
+  var _sessionStartTime = Date.now();
+  var _cardViewStart = Date.now();
+  var _timePerSource = {};
+  var _viewedIds = new Set();
+  var _sessionPosted = false;
+
+  function _flushCardTime() {
+    var p = POSTS[current];
+    if (!p || p.type === 'cover') return;
+    var key = (p.platform || 'unknown') + '/' + (p.source_name || 'unknown');
+    var elapsed = Math.round((Date.now() - _cardViewStart) / 1000);
+    _timePerSource[key] = (_timePerSource[key] || 0) + elapsed;
+    _cardViewStart = Date.now();
+  }
+
+  function _postUsageSession() {
+    if (_sessionPosted) return;
+    _flushCardTime();
+    var durationSec = Math.round((Date.now() - _sessionStartTime) / 1000);
+    if (durationSec < 5) return; // skip trivial sessions
+    _sessionPosted = true;
+    var payload = JSON.stringify({
+      started_at: new Date(_sessionStartTime).toISOString(),
+      ended_at: new Date().toISOString(),
+      duration_seconds: durationSec,
+      artifacts_viewed: _viewedIds.size,
+      time_per_source: _timePerSource,
+    });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/usage/session', new Blob([payload], { type: 'application/json' }));
+    } else {
+      fetch('/api/usage/session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: payload, keepalive: true,
+      }).catch(function () {});
+    }
+  }
+
+  window._postUsageSession = _postUsageSession;
+  window.addEventListener('beforeunload', _postUsageSession);
+
+  // ── 20-20-20 Eye break overlay ─────────────────
+  var _eyeBreakActive = false;
+  var _eyeBreakOverlay = document.getElementById('eye-break-overlay');
+  if (!_eyeBreakOverlay) {
+    _eyeBreakOverlay = document.createElement('div');
+    _eyeBreakOverlay.id = 'eye-break-overlay';
+    _eyeBreakOverlay.innerHTML =
+      '<div class="eye-break-card">' +
+        '<div class="eye-break-title">20 · 20 · 20</div>' +
+        '<div class="eye-break-subtitle">Look 20 feet away for 20 seconds.</div>' +
+        '<div class="eye-break-timer">20</div>' +
+        '<div class="eye-break-breath"><em>Take a deep breath.</em></div>' +
+      '</div>';
+    _eyeBreakOverlay.style.display = 'none';
+    var viewerApp = document.getElementById('viewer-app');
+    if (viewerApp) viewerApp.appendChild(_eyeBreakOverlay);
+  }
+
+  function _shouldShowEyeBreak() {
+    return (Date.now() - _sessionStartTime) >= 20 * 60 * 1000;
+  }
+
+  function _showEyeBreak(callback) {
+    _eyeBreakActive = true;
+    _eyeBreakOverlay.style.display = '';
+    var remaining = 20;
+    var timerEl = _eyeBreakOverlay.querySelector('.eye-break-timer');
+    timerEl.textContent = remaining;
+
+    var iv = setInterval(function () {
+      remaining--;
+      timerEl.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(iv);
+        _eyeBreakOverlay.style.display = 'none';
+        _eyeBreakActive = false;
+        _sessionStartTime = Date.now();
+        if (callback) callback();
+      }
+    }, 1000);
+  }
+
   // ── Source colour palettes ──────────────────────────
   const PALETTES = [
     ['#6366f1', '#8b5cf6', '#a78bfa'],
@@ -248,8 +332,13 @@ window.initDigestViewer = function (ARTIFACTS) {
   const commentsEl   = document.getElementById('card-comments');
 
   function renderCard(index) {
+    _flushCardTime();
+    _cardViewStart = Date.now();
+
     const p = POSTS[index];
     current = index;
+
+    if (p && p.id) _viewedIds.add(p.id);
 
     tabDefs.forEach(({ start, end, el }) => {
       el.classList.toggle('active', index >= start && index <= end);
@@ -437,6 +526,8 @@ window.initDigestViewer = function (ARTIFACTS) {
     var viewHome = document.getElementById('view-home');
     if (!viewHome || !viewHome.classList.contains('active')) return;
 
+    if (_eyeBreakActive) { e.preventDefault(); return; }
+
     var inText = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT';
 
     if (e.ctrlKey && (e.key === 'z' || e.key === 'Z')) {
@@ -480,7 +571,12 @@ window.initDigestViewer = function (ARTIFACTS) {
     if (inText) return;
 
     if (e.key === 'ArrowLeft'  || e.key === 'h') { e.preventDefault(); navigate(-1); return; }
-    if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); navigate(1);  return; }
+    if (e.key === 'ArrowRight' || e.key === 'l') {
+      e.preventDefault();
+      if (_shouldShowEyeBreak()) { _showEyeBreak(function () { navigate(1); }); }
+      else { navigate(1); }
+      return;
+    }
     if (e.key === 'j' || e.key === 'ArrowDown')  { e.preventDefault(); _smoothScroll(200); return; }
     if (e.key === 'k' || e.key === 'ArrowUp')    { e.preventDefault(); _smoothScroll(-200); return; }
 
@@ -492,7 +588,11 @@ window.initDigestViewer = function (ARTIFACTS) {
 
     if (e.key === 'Enter') {
       e.preventDefault();
-      archiveCurrent();
+      if (POSTS[current] && POSTS[current].type !== 'cover' && _shouldShowEyeBreak()) {
+        _showEyeBreak(function () { archiveCurrent(); });
+      } else {
+        archiveCurrent();
+      }
       return;
     }
   }

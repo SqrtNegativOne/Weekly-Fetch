@@ -497,3 +497,65 @@
   font-size: var(--text-xs);
   color: var(--text-2);
 }
+
+/* ═══════════════════════════════════════════════════
+   20-20-20 Eye Break Overlay
+   ═══════════════════════════════════════════════════ */
+
+#eye-break-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(3% 0.025 285 / 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: eye-break-in 0.4s var(--ease) both;
+}
+
+@keyframes eye-break-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.eye-break-card {
+  text-align: center;
+  padding: 56px 48px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+  max-width: 420px;
+}
+
+.eye-break-title {
+  font-family: var(--font-serif);
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 12px;
+  letter-spacing: 0.04em;
+}
+
+.eye-break-subtitle {
+  font-size: var(--text-base);
+  color: var(--text-2);
+  line-height: 1.6;
+  margin-bottom: 32px;
+}
+
+.eye-break-timer {
+  font-family: var(--font-mono);
+  font-size: 4rem;
+  font-weight: 700;
+  color: var(--accent-light);
+  margin-bottom: 20px;
+  line-height: 1;
+}
+
+.eye-break-breath {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}

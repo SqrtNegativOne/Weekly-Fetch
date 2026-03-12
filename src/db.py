@@ -50,6 +50,15 @@ def init_db(db_path: Path) -> None:
                 todo_text   TEXT NOT NULL,
                 updated_at  TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS usage_sessions (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at       TEXT NOT NULL,
+                ended_at         TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                artifacts_viewed INTEGER NOT NULL DEFAULT 0,
+                time_per_source  TEXT
+            );
         """)
 
 
@@ -222,6 +231,114 @@ def count_pending(db_path: Path) -> int:
             "SELECT COUNT(*) FROM artifacts WHERE status = 'pending'"
         ).fetchone()
     return row[0]
+
+
+def save_usage_session(db_path: Path, started_at: str, ended_at: str,
+                       duration_seconds: int, artifacts_viewed: int,
+                       time_per_source_json: str) -> None:
+    """Insert one usage session row."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            INSERT INTO usage_sessions
+                (started_at, ended_at, duration_seconds, artifacts_viewed, time_per_source)
+            VALUES (?, ?, ?, ?, ?)
+        """, (started_at, ended_at, duration_seconds, artifacts_viewed, time_per_source_json))
+
+
+def get_usage_stats(db_path: Path) -> dict:
+    """Return aggregated usage statistics.
+
+    Returns a dict with:
+      total_time_seconds  — sum of all session durations
+      total_sessions      — number of sessions
+      total_artifacts_viewed — sum of artifacts viewed
+      per_source          — list of {source, time_seconds, note_count, todo_count}
+      recent_sessions     — last 20 sessions
+    """
+    if not db_path.exists():
+        return {"total_time_seconds": 0, "total_sessions": 0,
+                "total_artifacts_viewed": 0, "per_source": [],
+                "recent_sessions": []}
+
+    with _connect(db_path) as conn:
+        # Totals
+        agg = conn.execute("""
+            SELECT COALESCE(SUM(duration_seconds), 0),
+                   COUNT(*),
+                   COALESCE(SUM(artifacts_viewed), 0)
+            FROM usage_sessions
+        """).fetchone()
+
+        total_time = agg[0]
+        total_sessions = agg[1]
+        total_viewed = agg[2]
+
+        # Aggregate time_per_source from all sessions
+        source_time: dict[str, int] = {}
+        rows = conn.execute("SELECT time_per_source FROM usage_sessions WHERE time_per_source IS NOT NULL").fetchall()
+        for row in rows:
+            try:
+                blob = json.loads(row[0])
+                for key, secs in blob.items():
+                    source_time[key] = source_time.get(key, 0) + int(secs)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Note and todo counts per source (from artifacts table)
+        source_notes: dict[str, int] = {}
+        source_todos: dict[str, int] = {}
+        note_rows = conn.execute("""
+            SELECT a.platform || '/' || a.source_name AS src, COUNT(*) AS cnt
+            FROM notes n JOIN artifacts a ON n.artifact_id = a.id
+            GROUP BY src
+        """).fetchall()
+        for r in note_rows:
+            source_notes[r[0]] = r[1]
+
+        todo_rows = conn.execute("""
+            SELECT a.platform || '/' || a.source_name AS src, COUNT(*) AS cnt
+            FROM todos t JOIN artifacts a ON t.artifact_id = a.id
+            GROUP BY src
+        """).fetchall()
+        for r in todo_rows:
+            source_todos[r[0]] = r[1]
+
+        # Merge into per_source list
+        all_sources = set(source_time) | set(source_notes) | set(source_todos)
+        per_source = []
+        for src in sorted(all_sources):
+            parts = src.split("/", 1)
+            per_source.append({
+                "platform": parts[0] if len(parts) > 1 else "",
+                "source_name": parts[1] if len(parts) > 1 else src,
+                "source": src,
+                "time_seconds": source_time.get(src, 0),
+                "note_count": source_notes.get(src, 0),
+                "todo_count": source_todos.get(src, 0),
+            })
+
+        # Sort by time descending so the busiest sources appear first
+        per_source.sort(key=lambda x: x["time_seconds"], reverse=True)
+
+        # Recent sessions
+        recent = conn.execute("""
+            SELECT started_at, duration_seconds, artifacts_viewed
+            FROM usage_sessions
+            ORDER BY started_at DESC
+            LIMIT 20
+        """).fetchall()
+        recent_sessions = [
+            {"started_at": r[0], "duration_seconds": r[1], "artifacts_viewed": r[2]}
+            for r in recent
+        ]
+
+    return {
+        "total_time_seconds": total_time,
+        "total_sessions": total_sessions,
+        "total_artifacts_viewed": total_viewed,
+        "per_source": per_source,
+        "recent_sessions": recent_sessions,
+    }
 
 
 def _row_to_dict(r) -> dict:

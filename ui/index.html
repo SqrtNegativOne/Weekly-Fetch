@@ -49,6 +49,10 @@
         <span class="nav-icon">&#x2610;</span>
         <span class="nav-label">Archive</span>
       </button>
+      <button class="nav-btn" data-view="usage">
+        <span class="nav-icon">&#x25F0;</span>
+        <span class="nav-label">Usage</span>
+      </button>
       <button class="nav-btn" data-view="settings">
         <span class="nav-icon">&#x2699;</span>
         <span class="nav-label">Settings</span>
@@ -263,6 +267,26 @@
         <div id="archive-list"></div>
         <div class="archive-pagination">
           <button class="btn btn-secondary" id="btn-archive-more" style="display:none">Load more</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage view -->
+    <div id="view-usage" class="app-view">
+      <div class="app-view-content">
+        <div class="app-view-header">Usage</div>
+        <div id="usage-summary" class="usage-summary"></div>
+        <div class="form-section">
+          <div class="form-section-title">Time per Source</div>
+          <div id="usage-source-bars"></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Notes & Todos per Source</div>
+          <div id="usage-notes-bars"></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-title">Recent Sessions</div>
+          <div id="usage-sessions-list"></div>
         </div>
       </div>
     </div>
