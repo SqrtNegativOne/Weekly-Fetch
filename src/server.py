@@ -132,7 +132,11 @@ def create_app() -> FastAPI:
     # ── Notes / Todos — independent status ──────────────────────────────────
     @app.post("/api/notes/{artifact_id}/archive")
     def do_archive_note(artifact_id: int) -> dict:
-        archive_note(_db_path(), artifact_id)
+        if not archive_note(_db_path(), artifact_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot archive note — the parent artifact has not been archived yet.",
+            )
         return {"ok": True}
 
     @app.post("/api/notes/{artifact_id}/unarchive")
@@ -142,7 +146,11 @@ def create_app() -> FastAPI:
 
     @app.post("/api/todos/{artifact_id}/archive")
     def do_archive_todo(artifact_id: int) -> dict:
-        archive_todo(_db_path(), artifact_id)
+        if not archive_todo(_db_path(), artifact_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot archive todo — the parent artifact has not been archived yet.",
+            )
         return {"ok": True}
 
     @app.post("/api/todos/{artifact_id}/unarchive")

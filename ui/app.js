@@ -43,13 +43,13 @@ async function pollFetchStatus() {
 function updateFetchProgress(progress) {
   var bar    = document.getElementById('fetch-progress-bar');
   var status = document.getElementById('fetch-progress-status');
-  var list   = document.getElementById('fetch-progress-list');
-  if (!bar || !status || !list) return;
+  var grid   = document.getElementById('fetch-progress-grid');
+  if (!bar || !status || !grid) return;
 
   if (!progress) {
     bar.style.width = '0%';
     status.textContent = 'Starting\u2026';
-    list.innerHTML = '';
+    grid.innerHTML = '';
     return;
   }
 
@@ -58,8 +58,13 @@ function updateFetchProgress(progress) {
     : 0;
   bar.style.width = pct + '%';
 
-  if (progress.current) {
-    status.textContent = 'Fetching ' + progress.current +
+  // Status text
+  var fetching = (progress.sources || []).filter(function (s) {
+    return s.status === 'fetching';
+  }).length;
+  if (fetching > 0) {
+    status.textContent = 'Fetching ' + fetching + ' source' +
+      (fetching > 1 ? 's' : '') +
       '  (' + progress.done + '/' + progress.total + ')';
   } else if (progress.done >= progress.total && progress.total > 0) {
     status.textContent = 'Saving\u2026';
@@ -67,12 +72,19 @@ function updateFetchProgress(progress) {
     status.textContent = 'Starting\u2026';
   }
 
+  // Matrix grid — one cell per source
+  var icons = { pending: '\u25cb', fetching: '\u25cb', done: '\u2713', error: '\u2717' };
   var html = '';
-  (progress.done_list || []).forEach(function (src) {
-    html += '<div class="fetch-done-item">\u2713 ' +
-      src.replace(/</g, '&lt;') + '</div>';
+  (progress.sources || []).forEach(function (src) {
+    var icon = icons[src.status] || '\u25cb';
+    var cls = 'fetch-cell fetch-cell--' + src.status +
+      ' fetch-cell--' + (src.platform || '');
+    html += '<div class="' + cls + '">' +
+      '<span class="fetch-cell-icon">' + icon + '</span>' +
+      '<span class="fetch-cell-label">' +
+        src.label.replace(/</g, '&lt;') + '</span></div>';
   });
-  list.innerHTML = html;
+  grid.innerHTML = html;
 }
 
 async function showFetchErrors() {

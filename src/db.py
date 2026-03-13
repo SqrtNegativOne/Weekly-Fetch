@@ -367,13 +367,22 @@ def get_usage_stats(db_path: Path) -> dict:
 
 # ── Note / Todo independent status operations ────────────────────────────────
 
-def archive_note(db_path: Path, artifact_id: int) -> None:
-    """Set a note's status to 'archived'."""
+def archive_note(db_path: Path, artifact_id: int) -> bool:
+    """Set a note's status to 'archived'.
+
+    Returns True on success, False if the parent artifact is not archived.
+    """
     with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM artifacts WHERE id = ?", (artifact_id,)
+        ).fetchone()
+        if not row or row[0] != 'archived':
+            return False
         conn.execute("""
             UPDATE notes SET status = 'archived', archived_at = ?
             WHERE artifact_id = ?
         """, (datetime.now().isoformat(), artifact_id))
+        return True
 
 
 def unarchive_note(db_path: Path, artifact_id: int) -> None:
@@ -385,13 +394,22 @@ def unarchive_note(db_path: Path, artifact_id: int) -> None:
         """, (artifact_id,))
 
 
-def archive_todo(db_path: Path, artifact_id: int) -> None:
-    """Set a todo's status to 'archived'."""
+def archive_todo(db_path: Path, artifact_id: int) -> bool:
+    """Set a todo's status to 'archived'.
+
+    Returns True on success, False if the parent artifact is not archived.
+    """
     with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM artifacts WHERE id = ?", (artifact_id,)
+        ).fetchone()
+        if not row or row[0] != 'archived':
+            return False
         conn.execute("""
             UPDATE todos SET status = 'archived', archived_at = ?
             WHERE artifact_id = ?
         """, (datetime.now().isoformat(), artifact_id))
+        return True
 
 
 def unarchive_todo(db_path: Path, artifact_id: int) -> None:
@@ -404,23 +422,31 @@ def unarchive_todo(db_path: Path, artifact_id: int) -> None:
 
 
 def archive_all_notes(db_path: Path) -> int:
-    """Bulk-archive all pending notes. Returns count archived."""
+    """Bulk-archive all pending notes whose parent artifact is archived.
+
+    Returns count archived. Notes on non-archived artifacts are skipped.
+    """
     now = datetime.now().isoformat()
     with _connect(db_path) as conn:
         conn.execute("""
             UPDATE notes SET status = 'archived', archived_at = ?
             WHERE status = 'pending'
+              AND artifact_id IN (SELECT id FROM artifacts WHERE status = 'archived')
         """, (now,))
         return conn.execute("SELECT changes()").fetchone()[0]
 
 
 def archive_all_todos(db_path: Path) -> int:
-    """Bulk-archive all pending todos. Returns count archived."""
+    """Bulk-archive all pending todos whose parent artifact is archived.
+
+    Returns count archived. Todos on non-archived artifacts are skipped.
+    """
     now = datetime.now().isoformat()
     with _connect(db_path) as conn:
         conn.execute("""
             UPDATE todos SET status = 'archived', archived_at = ?
             WHERE status = 'pending'
+              AND artifact_id IN (SELECT id FROM artifacts WHERE status = 'archived')
         """, (now,))
         return conn.execute("SELECT changes()").fetchone()[0]
 
@@ -438,7 +464,8 @@ def get_pending_notes_todos(db_path: Path) -> dict:
     with _connect(db_path) as conn:
         note_rows = conn.execute("""
             SELECT n.artifact_id, n.note_text, n.updated_at,
-                   a.title, a.platform, a.source_name, a.link
+                   a.title, a.platform, a.source_name, a.link,
+                   a.status AS artifact_status
             FROM notes n
             JOIN artifacts a ON a.id = n.artifact_id
             WHERE n.status = 'pending'
@@ -447,7 +474,8 @@ def get_pending_notes_todos(db_path: Path) -> dict:
 
         todo_rows = conn.execute("""
             SELECT t.artifact_id, t.todo_text, t.updated_at,
-                   a.title, a.platform, a.source_name, a.link
+                   a.title, a.platform, a.source_name, a.link,
+                   a.status AS artifact_status
             FROM todos t
             JOIN artifacts a ON a.id = t.artifact_id
             WHERE t.status = 'pending'
@@ -555,6 +583,8 @@ def _note_row_to_dict(r) -> dict:
     }
     if "archived_at" in r.keys():
         d["archived_at"] = r["archived_at"]
+    if "artifact_status" in r.keys():
+        d["artifact_status"] = r["artifact_status"]
     return d
 
 
@@ -571,6 +601,8 @@ def _todo_row_to_dict(r) -> dict:
     }
     if "archived_at" in r.keys():
         d["archived_at"] = r["archived_at"]
+    if "artifact_status" in r.keys():
+        d["artifact_status"] = r["artifact_status"]
     return d
 
 

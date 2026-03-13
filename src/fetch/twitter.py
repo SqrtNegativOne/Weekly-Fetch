@@ -4,7 +4,7 @@ import feedparser
 import requests
 
 from config import HEADERS, POST_LIMIT
-from fetch.base import BaseFetcher, first_image, register
+from fetch.base import BaseFetcher, first_image, register, strip_html
 
 
 @register
@@ -71,10 +71,13 @@ class TwitterFetcher(BaseFetcher):
                 raw_html = entry.get("summary", "")
 
             img_url = first_image(raw_html)
+            plain_text = strip_html(raw_html) if raw_html else ""
 
             if img_url:
                 content_type = "image"
                 content      = {"url": img_url}
+                if plain_text:
+                    content["text"] = plain_text
             else:
                 content_type = "link"
                 content      = {"url": link}

@@ -74,17 +74,17 @@ class BlueskyFetcher(BaseFetcher):
                 view_images = view_embed.get("images", [])
                 img_url     = view_images[0].get("fullsize", "") if view_images else ""
                 content_type = "image"
-                content      = {"url": img_url}
+                content      = {"url": img_url, "text": text}
 
             elif "external" in embed_type:
                 ext          = view_embed.get("external", {})
                 content_type = "link"
-                content      = {"url": ext.get("uri", "")}
+                content      = {"url": ext.get("uri", ""), "text": text}
 
             elif "video" in embed_type:
                 # Public API doesn't expose a direct video URL — show as link to post
                 content_type = "link"
-                content      = {"url": link}
+                content      = {"url": link, "text": text}
 
             else:
                 content_type = "text"

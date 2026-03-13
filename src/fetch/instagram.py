@@ -68,6 +68,10 @@ class InstagramFetcher(BaseFetcher):
                     content_type = "image"
                     content      = {"url": post.url}
 
+                # Include full caption as body text
+                if caption:
+                    content["text"] = caption
+
                 posts.append(self.make_post(
                     title=title,
                     link=link,

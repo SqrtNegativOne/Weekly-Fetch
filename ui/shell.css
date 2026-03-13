@@ -244,7 +244,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .fetch-progress {
   text-align: center;
-  max-width: 420px;
+  max-width: 600px;
   width: 100%;
 }
 .fetch-progress-title {
@@ -280,14 +280,69 @@ button:focus:not(:focus-visible) { outline: none; }
   margin-bottom: 14px;
   min-height: 1.4em;
 }
-.fetch-progress-list {
-  text-align: left;
-  max-height: 160px;
+/* ── Fetch progress matrix ── */
+.fetch-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 6px 12px;
+  max-height: 180px;
   overflow-y: auto;
+  text-align: left;
 }
-.fetch-done-item {
+.fetch-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
   font-size: var(--text-sm);
-  color: var(--success-text);
-  padding: 3px 0;
   font-family: var(--font-mono);
+  transition: background 0.3s, color 0.3s;
 }
+.fetch-cell-icon {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+  font-size: 0.95em;
+}
+.fetch-cell-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status: pending — muted hollow circle */
+.fetch-cell--pending {
+  color: var(--text-4);
+}
+
+/* Status: fetching — platform-colored pulse */
+.fetch-cell--fetching {
+  color: var(--text-2);
+  background: var(--bg-elevated);
+}
+.fetch-cell--fetching .fetch-cell-icon {
+  animation: fetch-pulse 1.2s ease-in-out infinite;
+}
+@keyframes fetch-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* Status: done — checkmark in success color */
+.fetch-cell--done {
+  color: var(--success-text);
+}
+
+/* Status: error — cross in error color */
+.fetch-cell--error {
+  color: var(--error-text);
+}
+
+/* Platform accent on the icon when fetching */
+.fetch-cell--fetching.fetch-cell--reddit    .fetch-cell-icon { color: var(--reddit); }
+.fetch-cell--fetching.fetch-cell--bluesky   .fetch-cell-icon { color: var(--bluesky); }
+.fetch-cell--fetching.fetch-cell--tumblr    .fetch-cell-icon { color: var(--tumblr); }
+.fetch-cell--fetching.fetch-cell--instagram .fetch-cell-icon { color: var(--instagram); }
+.fetch-cell--fetching.fetch-cell--mastodon  .fetch-cell-icon { color: var(--mastodon); }
+.fetch-cell--fetching.fetch-cell--twitter   .fetch-cell-icon { color: var(--twitter); }

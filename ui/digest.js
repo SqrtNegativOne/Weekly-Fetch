@@ -402,6 +402,10 @@ window.initDigestViewer = function (data) {
         '</div>';
       notes.forEach(function (n) {
         var preview = (n.note_text || '').replace(/^•\s*/gm, '').trim();
+        var canArchive = n.artifact_status === 'archived';
+        var btnAttr = canArchive
+          ? 'class="review-archive-btn" data-type="note" data-id="' + n.artifact_id + '"'
+          : 'class="review-archive-btn review-archive-btn--disabled" disabled title="Archive the artifact first"';
         html += '<div class="review-item review-note" data-artifact-id="' + n.artifact_id + '">' +
           '<div class="review-item-title">' +
             '<a href="' + escAttr(n.link || '#') + '" target="_blank" rel="noopener">' +
@@ -411,9 +415,10 @@ window.initDigestViewer = function (data) {
             '<span class="platform-badge pb-' + (n.platform || 'reddit') + '">' +
               (n.platform || 'reddit') + '</span> ' +
             '<span>' + escAttr(n.source_name || '') + '</span>' +
+            (!canArchive ? '<span class="review-pending-badge">artifact pending</span>' : '') +
           '</div>' +
           '<div class="review-item-text">' + escAttr(preview) + '</div>' +
-          '<button class="review-archive-btn" data-type="note" data-id="' + n.artifact_id + '">Archive</button>' +
+          '<button ' + btnAttr + '>Archive</button>' +
         '</div>';
       });
       html += '</div>';
@@ -426,6 +431,10 @@ window.initDigestViewer = function (data) {
           '<button class="review-archive-all" id="btn-archive-all-todos">Archive All Todos</button>' +
         '</div>';
       todos.forEach(function (t) {
+        var canArchive = t.artifact_status === 'archived';
+        var btnAttr = canArchive
+          ? 'class="review-archive-btn" data-type="todo" data-id="' + t.artifact_id + '"'
+          : 'class="review-archive-btn review-archive-btn--disabled" disabled title="Archive the artifact first"';
         html += '<div class="review-item review-todo" data-artifact-id="' + t.artifact_id + '">' +
           '<div class="review-item-title">' +
             '<a href="' + escAttr(t.link || '#') + '" target="_blank" rel="noopener">' +
@@ -435,9 +444,10 @@ window.initDigestViewer = function (data) {
             '<span class="platform-badge pb-' + (t.platform || 'reddit') + '">' +
               (t.platform || 'reddit') + '</span> ' +
             '<span>' + escAttr(t.source_name || '') + '</span>' +
+            (!canArchive ? '<span class="review-pending-badge">artifact pending</span>' : '') +
           '</div>' +
           '<div class="review-item-text">' + escAttr(t.todo_text || '') + '</div>' +
-          '<button class="review-archive-btn" data-type="todo" data-id="' + t.artifact_id + '">Archive</button>' +
+          '<button ' + btnAttr + '>Archive</button>' +
         '</div>';
       });
       html += '</div>';
@@ -481,7 +491,12 @@ window.initDigestViewer = function (data) {
     var endpoint = itemType === 'note'
       ? '/api/notes/' + artifactId + '/archive'
       : '/api/todos/' + artifactId + '/archive';
-    await fetch(endpoint, { method: 'POST' });
+    var res = await fetch(endpoint, { method: 'POST' });
+
+    if (!res.ok) {
+      showToastFromViewer('Archive the artifact first', 'error');
+      return;
+    }
 
     pushUndo({
       type: itemType === 'note' ? 'note_archive' : 'todo_archive',
@@ -611,6 +626,10 @@ window.initDigestViewer = function (data) {
       contentHtml = '<div class="ext-link"><a href="' + escAttr(p.content.url) +
         '" target="_blank" rel="noopener">' + escAttr(domain) + '</a></div>';
     }
+    // Non-text posts (image, gallery, video, link) can also carry body text
+    if (p.type !== 'text' && p.content && p.content.text) {
+      contentHtml += '<div class="selftext">' + marked.parse(p.content.text) + '</div>';
+    }
 
     const sc = scoreClass(p.score);
     document.getElementById('card').innerHTML =
@@ -621,7 +640,7 @@ window.initDigestViewer = function (data) {
         platformBadge(p.platform) +
       '</div>' + contentHtml;
 
-    if (p.type === 'text' && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    if (p.content && p.content.text && typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
       MathJax.typesetPromise([document.getElementById('card')]).catch(console.error);
     }
 

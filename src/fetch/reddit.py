@@ -142,10 +142,12 @@ class RedditFetcher(BaseFetcher):
             is_self    = post.get("is_self", False)
             is_gallery = post.get("is_gallery", False)
 
+            selftext = post.get("selftext", "").strip()
+
             if is_self:
                 # Keep raw markdown — client-side marked.js will render it
                 content_type = "text"
-                content = {"text": post.get("selftext", "")}
+                content = {"text": selftext}
 
             elif is_gallery:
                 media_meta = post.get("media_metadata", {})
@@ -178,6 +180,10 @@ class RedditFetcher(BaseFetcher):
             else:
                 content_type = "link"
                 content = {"url": post.get("url", "")}
+
+            # Non-self posts can still have body text — include it
+            if not is_self and selftext:
+                content["text"] = selftext
 
             post_id  = post.get("id", "")
             post_num = len(posts) + 1

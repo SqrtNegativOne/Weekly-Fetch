@@ -104,6 +104,8 @@ class MastodonFetcher(BaseFetcher):
             if image_attachments:
                 content_type = "image"
                 content      = {"url": image_attachments[0].get("url", "")}
+                if raw_text:
+                    content["text"] = raw_text
             else:
                 content_type = "text"
                 content      = {"text": raw_text}

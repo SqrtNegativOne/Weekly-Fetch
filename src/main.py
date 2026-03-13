@@ -8,6 +8,7 @@ It fetches posts, saves to SQLite as pending artifacts, and shows a toast notifi
 """
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,14 +36,16 @@ _ERRORS_PATH = BASE_DIR / "fetch_errors.json"
 _PROGRESS_PATH = BASE_DIR / "fetch_progress.json"
 
 
-def _write_progress(total: int, done: int, current: str,
-                    done_list: list[str]) -> None:
+MAX_WORKERS = 4
+
+
+def _write_progress(total: int, done: int,
+                    sources_status: list[dict]) -> None:
     """Write current fetch progress so the GUI can display it."""
     _PROGRESS_PATH.write_text(json.dumps({
         "total": total,
         "done": done,
-        "current": current,
-        "done_list": done_list,
+        "sources": sources_status,
     }, ensure_ascii=False), encoding="utf-8")
 
 
@@ -93,7 +96,6 @@ def main(force: bool = False):
         return
 
     errors: list[str] = []
-    done_list: list[str] = []
 
     try:
         # Progress bar budget — each fetcher knows how many ticks it needs.
@@ -108,57 +110,76 @@ def main(force: bool = False):
         results: dict[str, list] = {}
         total_sources = len(due)
 
-        # Write initial progress
-        _write_progress(total_sources, 0, "", [])
+        # Build per-source status list for the GUI progress matrix.
+        # Each entry tracks its label, platform, and status.
+        sources_status: list[dict] = []
+        jobs: list[tuple] = []          # (index, source, fetcher, since)
 
-        # Load accounts once so each fetcher can read platform config (e.g. rss_base)
         accounts = load_accounts()
 
+        for i, source in enumerate(due):
+            label = f"{source.platform}/{source.name}"
+            fetcher = FETCHERS.get(source.platform)
+
+            if fetcher is None:
+                _append_error(errors,
+                    f"Unknown platform '{source.platform}' — skipped")
+                sources_status.append({"label": label,
+                    "platform": source.platform, "status": "error"})
+                continue
+
+            # Compute the cutoff datetime from the last fetch.
+            if force:
+                since = None
+            else:
+                last_str = state.get(f"{source.platform}/{source.name}")
+                if last_str:
+                    since = datetime.fromisoformat(last_str)
+                    if since.tzinfo is None:
+                        since = since.replace(tzinfo=timezone.utc)
+                else:
+                    since = None
+
+            sources_status.append({"label": label,
+                "platform": source.platform, "status": "pending"})
+            jobs.append((len(sources_status) - 1, source, fetcher, since))
+
+        done_count = sum(1 for s in sources_status if s["status"] == "error")
+        _write_progress(total_sources, done_count, sources_status)
+
+        # ── Fan-out: submit all jobs to the thread pool ──────────────────
         with tqdm(total=max(total_steps, 1), unit="req",
                   bar_format=bar_format, dynamic_ncols=True) as progress:
 
-            for source in due:
-                source_label = f"{source.platform}/{source.name}"
-                _write_progress(total_sources, len(done_list),
-                                source_label, done_list)
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                futures = {}
+                for idx, source, fetcher, since in jobs:
+                    sources_status[idx]["status"] = "fetching"
+                    future = pool.submit(
+                        fetcher.fetch_posts, source, progress, since,
+                        accounts_config=accounts)
+                    futures[future] = (idx, source, fetcher)
 
-                # Compute the cutoff datetime from the last fetch so
-                # fetchers only return posts newer than that.
-                # In force mode, skip the cutoff entirely — fetchers use
-                # their default 7-day window, so we always get recent posts.
-                if force:
-                    since = None
-                else:
-                    last_str = state.get(f"{source.platform}/{source.name}")
-                    if last_str:
-                        since = datetime.fromisoformat(last_str)
-                        if since.tzinfo is None:
-                            since = since.replace(tzinfo=timezone.utc)
-                    else:
-                        since = None
+                _write_progress(total_sources, done_count, sources_status)
 
-                fetcher = FETCHERS.get(source.platform)
-                if fetcher is None:
-                    _append_error(errors,
-                        f"Unknown platform '{source.platform}' — skipped")
-                    continue
+                # ── Fan-in: collect results as they arrive ───────────────
+                for future in as_completed(futures):
+                    idx, source, fetcher = futures[future]
+                    try:
+                        posts = future.result()
+                        results[source.name] = posts
+                        mark_fetched(source, state, now)
+                        sources_status[idx]["status"] = "done"
+                    except Exception as exc:
+                        _append_error(errors,
+                            f"{source.platform}/{source.name}: {exc}")
+                        if fetcher.progress_steps == 1:
+                            progress.update(1)
+                        sources_status[idx]["status"] = "error"
 
-                posts: list = []
-                try:
-                    posts = fetcher.fetch_posts(source, progress, since,
-                                                accounts_config=accounts)
-
-                except Exception as exc:
-                    _append_error(errors,
-                        f"{source.platform}/{source.name}: {exc}")
-                    if fetcher.progress_steps == 1:
-                        progress.update(1)   # keep bar moving on failure
-                    done_list.append(source_label)
-                    continue
-
-                results[source.name] = posts
-                mark_fetched(source, state, now)
-                done_list.append(source_label)
+                    done_count = sum(1 for s in sources_status
+                                     if s["status"] in ("done", "error"))
+                    _write_progress(total_sources, done_count, sources_status)
 
         save_state(state)
 
