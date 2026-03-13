@@ -171,9 +171,14 @@ def main():
         text_select=True,
         js_api=api,
     )
+    assert win is not None
     api.set_window(win)
 
-    win.events.shown += lambda: apply_titlebar_style(win.native.Handle.ToInt64(), icon_path=icon_path)
+    def _on_shown():
+        native = win.native
+        if native is not None:
+            apply_titlebar_style(native.Handle.ToInt64(), icon_path=icon_path)
+    win.events.shown += _on_shown
 
     if start_fullscreen:
         win.events.shown += lambda: win.maximize()

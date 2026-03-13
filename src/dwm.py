@@ -32,7 +32,7 @@ import sys
 
 # ── Platform guard ────────────────────────────────────────────────────────────
 if sys.platform != "win32":
-    def apply_titlebar_style(hwnd_or_title, *, icon_path=None) -> None:  # type: ignore
+    def apply_titlebar_style(hwnd_or_title, *, icon_path=None) -> None:
         pass
 
 else:
@@ -59,7 +59,7 @@ else:
         _user32.GetDpiForWindow.argtypes = [ctypes.wintypes.HWND]
         def _dpi(hwnd): return _user32.GetDpiForWindow(hwnd) or 96
     except AttributeError:
-        def _dpi(hwnd): return 96  # type: ignore
+        def _dpi(hwnd): return 96
 
     # Titlebar geometry (must match CSS tokens: --titlebar-h: 36px, 3×46px buttons)
     _TB_H_CSS      = 36    # CSS px — titlebar height

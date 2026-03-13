@@ -2,12 +2,42 @@
   "reddit": {
     "min_karma": 100,
     "subreddits": [
-      {"name": "MachineLearning",  "schedule": {"every_weekday": "Saturday"}},
-      {"name": "productivity",     "schedule": {"every_weekday": "Saturday"}},
-      {"name": "getdisciplined",   "schedule": {"every_weekday": "Saturday"}},
-      {"name": "selfimprovement",  "schedule": {"every_weekday": "Saturday"}},
-      {"name": "askphilosophy",    "schedule": {"every_weekday": "Saturday"}},
-      {"name": "philosophy",       "schedule": {"every_weekday": "Saturday"}}
+      {
+        "name": "MachineLearning",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      },
+      {
+        "name": "productivity",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      },
+      {
+        "name": "getdisciplined",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      },
+      {
+        "name": "selfimprovement",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      },
+      {
+        "name": "askphilosophy",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      },
+      {
+        "name": "philosophy",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      }
     ]
   },
   "bluesky": {
@@ -19,11 +49,23 @@
     "blogs": []
   },
   "instagram": {
-    "min_likes": 100,
-    "accounts": []
+    "min_likes": 10,
+    "accounts": [
+      {
+        "name": "morecorecore",
+        "schedule": {
+          "every_weekday": "Saturday"
+        }
+      }
+    ]
   },
   "mastodon": {
     "min_favorites": 10,
+    "accounts": []
+  },
+  "twitter": {
+    "min_likes": 50,
+    "rss_base": "",
     "accounts": []
   }
 }

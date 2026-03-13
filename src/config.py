@@ -24,7 +24,7 @@ def _get_bundle_dir() -> Path:
     Source: same as BASE_DIR (the repo root).
     """
     if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS)
+        return Path(getattr(sys, "_MEIPASS"))
     return Path(__file__).parent.parent
 
 
