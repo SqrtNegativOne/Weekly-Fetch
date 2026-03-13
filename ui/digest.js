@@ -55,13 +55,42 @@ async function reverseAction(action) {
     });
     if (typeof window._restoreTodoText === 'function')
       window._restoreTodoText(action.artifactId, action.previousText);
+  } else if (action.type === 'note_archive') {
+    await fetch('/api/notes/' + action.artifactId + '/unarchive', { method: 'POST' });
+    if (typeof window._refreshReviewCard === 'function')
+      window._refreshReviewCard();
+  } else if (action.type === 'todo_archive') {
+    await fetch('/api/todos/' + action.artifactId + '/unarchive', { method: 'POST' });
+    if (typeof window._refreshReviewCard === 'function')
+      window._refreshReviewCard();
+  } else if (action.type === 'notes_archive_all') {
+    // Can't precisely undo bulk archive, but we can re-render
+    // The user would need to unarchive individually from the archive page
+    if (typeof window._refreshReviewCard === 'function')
+      window._refreshReviewCard();
+  } else if (action.type === 'todos_archive_all') {
+    if (typeof window._refreshReviewCard === 'function')
+      window._refreshReviewCard();
   }
 }
 
 // ── Main viewer init ──────────────────────────────────────────────────────────
-window.initDigestViewer = function (ARTIFACTS) {
-  // POSTS[0] = synthetic cover card; POSTS[1..] = real artifacts
-  var POSTS = [{ type: 'cover' }].concat(ARTIFACTS);
+window.initDigestViewer = function (data) {
+  // data = { artifacts: [...], pending_notes: N, pending_todos: N }
+  var ARTIFACTS = data.artifacts || [];
+  var _pendingNotes = data.pending_notes || 0;
+  var _pendingTodos = data.pending_todos || 0;
+  var _hasReview = (_pendingNotes + _pendingTodos > 0) || ARTIFACTS.length > 0;
+
+  // Build POSTS array: [cover?, ...artifacts, review?]
+  var POSTS = [];
+  if (ARTIFACTS.length > 0) {
+    POSTS.push({ type: 'cover' });
+    POSTS = POSTS.concat(ARTIFACTS);
+  }
+  if (_hasReview) {
+    POSTS.push({ type: 'review' });
+  }
 
   let current = 0;
 
@@ -74,7 +103,7 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   function _flushCardTime() {
     var p = POSTS[current];
-    if (!p || p.type === 'cover') return;
+    if (!p || p.type === 'cover' || p.type === 'review') return;
     var key = (p.platform || 'unknown') + '/' + (p.source_name || 'unknown');
     var elapsed = Math.round((Date.now() - _cardViewStart) / 1000);
     _timePerSource[key] = (_timePerSource[key] || 0) + elapsed;
@@ -165,8 +194,11 @@ window.initDigestViewer = function (ARTIFACTS) {
   const subPaletteMap = {};
   let nextPaletteIdx = 0;
 
+  var REVIEW_PALETTE = ['#1a0e2e', '#2d1b4e', '#7c3aed'];
+
   function getPalette(post) {
     if (post.type === 'cover') return COVER_PALETTE;
+    if (post.type === 'review') return REVIEW_PALETTE;
     if (!(post.source_name in subPaletteMap))
       subPaletteMap[post.source_name] = nextPaletteIdx++ % PALETTES.length;
     return PALETTES[subPaletteMap[post.source_name]];
@@ -213,17 +245,20 @@ window.initDigestViewer = function (ARTIFACTS) {
     tabsEl.innerHTML = '';
     tabDefs.length = 0;
 
-    // Cover tab — always index 0
-    var coverBtn = makeTab('\u2605 Overview', 'tab-special');
-    coverBtn.onclick = function () { navigateTo(0); };
-    tabDefs.push({ start: 0, end: 0, el: coverBtn });
+    // Cover tab — only if cover card exists
+    var coverIdx = POSTS.findIndex(function (p) { return p.type === 'cover'; });
+    if (coverIdx >= 0) {
+      var coverBtn = makeTab('\u2605 Overview', 'tab-special');
+      coverBtn.onclick = function () { navigateTo(coverIdx); };
+      tabDefs.push({ start: coverIdx, end: coverIdx, el: coverBtn });
+    }
 
-    // Source tabs — artifacts start at index 1
+    // Source tabs — real artifacts only
     var subStarts = {}, subPlatformMap = {};
-    POSTS.slice(1).forEach(function (p, i) {
-      var realIdx = i + 1;
+    POSTS.forEach(function (p, i) {
+      if (p.type === 'cover' || p.type === 'review') return;
       if (!(p.source_name in subStarts)) {
-        subStarts[p.source_name]      = realIdx;
+        subStarts[p.source_name]      = i;
         subPlatformMap[p.source_name] = p.platform || 'reddit';
       }
     });
@@ -231,15 +266,29 @@ window.initDigestViewer = function (ARTIFACTS) {
     var subList = Object.keys(subStarts);
     subList.forEach(function (sub, si) {
       var start    = subStarts[sub];
-      var end      = si + 1 < subList.length
-        ? subStarts[subList[si + 1]] - 1
-        : POSTS.length - 1;
+      // end = next source start - 1, but skip review card
+      var end;
+      if (si + 1 < subList.length) {
+        end = subStarts[subList[si + 1]] - 1;
+      } else {
+        // last source: end before review card if present
+        var reviewIdx = POSTS.findIndex(function (p) { return p.type === 'review'; });
+        end = reviewIdx >= 0 ? reviewIdx - 1 : POSTS.length - 1;
+      }
       var platform = subPlatformMap[sub] || 'reddit';
       var count    = end - start + 1;
       var btn      = makeTab(platformPrefix(platform) + sub + ' (' + count + ')');
       btn.onclick  = function () { navigateTo(start); };
       tabDefs.push({ start, end, el: btn });
     });
+
+    // Review tab — only if review card exists
+    var reviewIdx = POSTS.findIndex(function (p) { return p.type === 'review'; });
+    if (reviewIdx >= 0) {
+      var reviewBtn = makeTab('\u2606 Review', 'tab-special');
+      reviewBtn.onclick = function () { navigateTo(reviewIdx); };
+      tabDefs.push({ start: reviewIdx, end: reviewIdx, el: reviewBtn });
+    }
   }
 
   rebuildTabs();
@@ -267,7 +316,9 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   // ── Cover card renderer ───────────────────────────
   function renderCoverCard() {
-    var artifacts = POSTS.slice(1);
+    var artifacts = POSTS.filter(function (p) {
+      return p.type !== 'cover' && p.type !== 'review';
+    });
     var count     = artifacts.length;
 
     var words = artifacts.reduce(function (acc, p) {
@@ -296,6 +347,14 @@ window.initDigestViewer = function (ARTIFACTS) {
       '</div>';
     }).join('');
 
+    var reviewLine = '';
+    if (_pendingNotes + _pendingTodos > 0) {
+      var parts = [];
+      if (_pendingNotes > 0) parts.push(_pendingNotes + ' note' + (_pendingNotes !== 1 ? 's' : ''));
+      if (_pendingTodos > 0) parts.push(_pendingTodos + ' todo' + (_pendingTodos !== 1 ? 's' : ''));
+      reviewLine = '<div class="cover-review-line">' + parts.join(' and ') + ' pending review</div>';
+    }
+
     document.getElementById('card').innerHTML =
       '<div class="cover-card">' +
         '<div class="cover-count">' + count +
@@ -303,10 +362,158 @@ window.initDigestViewer = function (ARTIFACTS) {
         '</div>' +
         '<div class="cover-readtime">Estimated reading time: ~' + readMins +
           ' minute' + (readMins !== 1 ? 's' : '') + '.</div>' +
+        reviewLine +
         '<div class="cover-sources-label">Sources</div>' +
         '<div class="cover-sources">' + sourcesHtml + '</div>' +
         '<div class="cover-hint">Press <kbd>\u2192</kbd> or <kbd>l</kbd> to start reading</div>' +
       '</div>';
+  }
+
+  // ── Review card renderer ─────────────────────────
+  async function renderReviewCard() {
+    var cardEl = document.getElementById('card');
+    cardEl.innerHTML = '<div class="review-card"><div class="review-loading">Loading pending review\u2026</div></div>';
+
+    var reviewData;
+    try {
+      var res = await fetch('/api/pending-review');
+      reviewData = await res.json();
+    } catch (e) {
+      cardEl.innerHTML = '<div class="review-card"><div class="review-empty">Failed to load review items.</div></div>';
+      return;
+    }
+
+    var notes = reviewData.notes || [];
+    var todos = reviewData.todos || [];
+
+    if (notes.length === 0 && todos.length === 0) {
+      cardEl.innerHTML = '<div class="review-card"><div class="review-empty">All notes and todos are archived!</div></div>';
+      _checkTrulyEmpty();
+      return;
+    }
+
+    var html = '<div class="review-card">';
+
+    if (notes.length > 0) {
+      html += '<div class="review-section" id="review-notes-section">' +
+        '<div class="review-section-header">' +
+          '<span class="review-section-title">Pending Notes (' + notes.length + ')</span>' +
+          '<button class="review-archive-all" id="btn-archive-all-notes">Archive All Notes</button>' +
+        '</div>';
+      notes.forEach(function (n) {
+        var preview = (n.note_text || '').replace(/^•\s*/gm, '').trim();
+        html += '<div class="review-item review-note" data-artifact-id="' + n.artifact_id + '">' +
+          '<div class="review-item-title">' +
+            '<a href="' + escAttr(n.link || '#') + '" target="_blank" rel="noopener">' +
+              (n.title || '[Post]') + '</a>' +
+          '</div>' +
+          '<div class="review-item-meta">' +
+            '<span class="platform-badge pb-' + (n.platform || 'reddit') + '">' +
+              (n.platform || 'reddit') + '</span> ' +
+            '<span>' + escAttr(n.source_name || '') + '</span>' +
+          '</div>' +
+          '<div class="review-item-text">' + escAttr(preview) + '</div>' +
+          '<button class="review-archive-btn" data-type="note" data-id="' + n.artifact_id + '">Archive</button>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    if (todos.length > 0) {
+      html += '<div class="review-section" id="review-todos-section">' +
+        '<div class="review-section-header">' +
+          '<span class="review-section-title">Pending Todos (' + todos.length + ')</span>' +
+          '<button class="review-archive-all" id="btn-archive-all-todos">Archive All Todos</button>' +
+        '</div>';
+      todos.forEach(function (t) {
+        html += '<div class="review-item review-todo" data-artifact-id="' + t.artifact_id + '">' +
+          '<div class="review-item-title">' +
+            '<a href="' + escAttr(t.link || '#') + '" target="_blank" rel="noopener">' +
+              (t.title || '[Post]') + '</a>' +
+          '</div>' +
+          '<div class="review-item-meta">' +
+            '<span class="platform-badge pb-' + (t.platform || 'reddit') + '">' +
+              (t.platform || 'reddit') + '</span> ' +
+            '<span>' + escAttr(t.source_name || '') + '</span>' +
+          '</div>' +
+          '<div class="review-item-text">' + escAttr(t.todo_text || '') + '</div>' +
+          '<button class="review-archive-btn" data-type="todo" data-id="' + t.artifact_id + '">Archive</button>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    cardEl.innerHTML = html;
+
+    // Bind per-item archive buttons
+    cardEl.querySelectorAll('.review-archive-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var itemType = btn.dataset.type;
+        var artifactId = parseInt(btn.dataset.id);
+        var itemEl = btn.closest('.review-item');
+        _archiveReviewItem(itemType, artifactId, itemEl);
+      });
+    });
+
+    // Bind "Archive All" buttons
+    var archAllNotes = document.getElementById('btn-archive-all-notes');
+    if (archAllNotes) {
+      archAllNotes.addEventListener('click', async function () {
+        await fetch('/api/notes/archive-all', { method: 'POST' });
+        pushUndo({ type: 'notes_archive_all' });
+        showToastFromViewer('All notes archived');
+        renderReviewCard();
+      });
+    }
+    var archAllTodos = document.getElementById('btn-archive-all-todos');
+    if (archAllTodos) {
+      archAllTodos.addEventListener('click', async function () {
+        await fetch('/api/todos/archive-all', { method: 'POST' });
+        pushUndo({ type: 'todos_archive_all' });
+        showToastFromViewer('All todos archived');
+        renderReviewCard();
+      });
+    }
+  }
+
+  async function _archiveReviewItem(itemType, artifactId, itemEl) {
+    var endpoint = itemType === 'note'
+      ? '/api/notes/' + artifactId + '/archive'
+      : '/api/todos/' + artifactId + '/archive';
+    await fetch(endpoint, { method: 'POST' });
+
+    pushUndo({
+      type: itemType === 'note' ? 'note_archive' : 'todo_archive',
+      artifactId: artifactId,
+    });
+
+    // Fade out animation then re-render
+    if (itemEl) {
+      itemEl.classList.add('fade-out');
+      setTimeout(function () {
+        renderReviewCard();
+      }, 350);
+    } else {
+      renderReviewCard();
+    }
+  }
+
+  function _checkTrulyEmpty() {
+    // Check if there are any real artifacts left in POSTS
+    var hasArtifacts = POSTS.some(function (p) {
+      return p.type !== 'cover' && p.type !== 'review';
+    });
+    if (!hasArtifacts) {
+      // Remove review card from POSTS
+      var reviewIdx = POSTS.findIndex(function (p) { return p.type === 'review'; });
+      if (reviewIdx >= 0) POSTS.splice(reviewIdx, 1);
+      // Remove cover if present
+      var coverIdx = POSTS.findIndex(function (p) { return p.type === 'cover'; });
+      if (coverIdx >= 0) POSTS.splice(coverIdx, 1);
+      showEmpty();
+      showToastFromViewer('You are free!');
+    }
   }
 
   // ── Comment thread renderer ───────────────────────
@@ -344,23 +551,34 @@ window.initDigestViewer = function (ARTIFACTS) {
       el.classList.toggle('active', index >= start && index <= end);
     });
 
-    var artifactCount = POSTS.length - 1; // exclude cover
+    // Count real artifacts (exclude cover + review)
+    var artifactCount = POSTS.filter(function (p) {
+      return p.type !== 'cover' && p.type !== 'review';
+    }).length;
+
     if (p.type === 'cover') {
       document.getElementById('topbar-progress').textContent =
         artifactCount + ' pending';
       document.getElementById('topbar').style.setProperty('--progress', '0%');
+    } else if (p.type === 'review') {
+      document.getElementById('topbar-progress').textContent = 'Review';
+      document.getElementById('topbar').style.setProperty('--progress', '100%');
     } else {
-      var artifactIndex = index; // 1-based among artifacts
+      // Find artifact position among real artifacts
+      var realIndex = 0;
+      for (var ri = 0; ri < index; ri++) {
+        if (POSTS[ri].type !== 'cover' && POSTS[ri].type !== 'review') realIndex++;
+      }
       document.getElementById('topbar-progress').textContent =
-        artifactIndex + ' / ' + artifactCount;
+        (realIndex + 1) + ' / ' + artifactCount;
       document.getElementById('topbar').style.setProperty(
-        '--progress', (artifactIndex / artifactCount * 100) + '%');
+        '--progress', ((realIndex + 1) / artifactCount * 100) + '%');
     }
 
     updateBg(getPalette(p));
 
     if (p.type === 'cover') {
-      sidebarEl.style.display = 'none';
+      sidebarEl.classList.add('sidebar-hidden');
       commentsEl.innerHTML = '';
       commentsEl.style.display = 'none';
       renderCoverCard();
@@ -368,8 +586,17 @@ window.initDigestViewer = function (ARTIFACTS) {
       return;
     }
 
+    if (p.type === 'review') {
+      sidebarEl.classList.add('sidebar-hidden');
+      commentsEl.innerHTML = '';
+      commentsEl.style.display = 'none';
+      renderReviewCard();
+      cardScrollEl.scrollTop = 0;
+      return;
+    }
+
     // ── Regular artifact card ─────────────────────
-    sidebarEl.style.display = '';
+    sidebarEl.classList.remove('sidebar-hidden');
 
     let contentHtml = '';
     if (p.type === 'text' && p.content && p.content.text) {
@@ -449,6 +676,11 @@ window.initDigestViewer = function (ARTIFACTS) {
       return;
     }
 
+    // On review card: Enter is a no-op (use buttons instead)
+    if (POSTS[current].type === 'review') {
+      return;
+    }
+
     var p            = POSTS[current];
     var removedIndex = current;
 
@@ -457,10 +689,26 @@ window.initDigestViewer = function (ARTIFACTS) {
 
     POSTS.splice(current, 1);
 
-    // Only cover card left — all done
-    if (POSTS.length <= 1) {
-      POSTS.splice(0, 1); // remove cover too
-      rebuildTabs();
+    // Count remaining real artifacts
+    var realCount = POSTS.filter(function (x) {
+      return x.type !== 'cover' && x.type !== 'review';
+    }).length;
+
+    if (realCount === 0) {
+      // Remove cover card if present
+      var coverIdx = POSTS.findIndex(function (x) { return x.type === 'cover'; });
+      if (coverIdx >= 0) POSTS.splice(coverIdx, 1);
+
+      // Check if there's a review card to show
+      var reviewIdx = POSTS.findIndex(function (x) { return x.type === 'review'; });
+      if (reviewIdx >= 0) {
+        rebuildTabs();
+        renderCard(reviewIdx);
+        showToastFromViewer('All artifacts archived');
+        return;
+      }
+
+      // Truly empty
       showEmpty();
       showToastFromViewer('All artifacts archived');
       return;
@@ -468,9 +716,13 @@ window.initDigestViewer = function (ARTIFACTS) {
 
     rebuildTabs();
     if (current >= POSTS.length) current = POSTS.length - 1;
+    // Skip landing on review card after archive
+    if (POSTS[current] && POSTS[current].type === 'review') {
+      current = Math.max(0, current - 1);
+    }
     const cardEl = document.getElementById('card');
     cardEl.classList.remove('anim-fwd', 'anim-bwd');
-    void cardEl.offsetWidth; // force reflow so the class removal is committed
+    void cardEl.offsetWidth;
     cardEl.classList.add('anim-fwd');
     renderCard(current);
   }
@@ -478,9 +730,15 @@ window.initDigestViewer = function (ARTIFACTS) {
   // ── Re-insert for undo ────────────────────────────
   window._reinsertArtifact = function (data, originalIndex) {
     // If cover was removed, restore it first
-    if (POSTS.length === 0) POSTS.push({ type: 'cover' });
+    var hasCover = POSTS.some(function (p) { return p.type === 'cover'; });
+    if (!hasCover) {
+      POSTS.unshift({ type: 'cover' });
+    }
 
-    var idx = Math.min(Math.max(originalIndex, 1), POSTS.length);
+    // Insert before the review card but after other artifacts
+    var reviewIdx = POSTS.findIndex(function (p) { return p.type === 'review'; });
+    var maxInsert = reviewIdx >= 0 ? reviewIdx : POSTS.length;
+    var idx = Math.min(Math.max(originalIndex, 1), maxInsert);
     POSTS.splice(idx, 0, data);
 
     document.getElementById('viewer-app').style.display = '';
@@ -502,6 +760,21 @@ window.initDigestViewer = function (ARTIFACTS) {
     if (p) p.todo = text;
     if (POSTS[current] && POSTS[current].id === artifactId)
       document.getElementById('todos').value = text;
+  };
+
+  window._refreshReviewCard = function () {
+    // Re-add review card if it was removed
+    var reviewIdx = POSTS.findIndex(function (p) { return p.type === 'review'; });
+    if (reviewIdx < 0) {
+      POSTS.push({ type: 'review' });
+      document.getElementById('viewer-app').style.display = '';
+      document.getElementById('home-empty').style.display = 'none';
+      rebuildTabs();
+    }
+    // If currently viewing the review card, re-render it
+    if (POSTS[current] && POSTS[current].type === 'review') {
+      renderReviewCard();
+    }
   };
 
   // ── Smooth scroll ─────────────────────────────────
@@ -541,7 +814,7 @@ window.initDigestViewer = function (ARTIFACTS) {
     if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       const notesEl = document.getElementById('notes');
-      if (notesEl && sidebarEl.style.display !== 'none') {
+      if (notesEl && !sidebarEl.classList.contains('sidebar-hidden')) {
         if (document.activeElement === notesEl) {
           notesEl.blur();
           document.getElementById('card-scroll').focus();
@@ -556,7 +829,7 @@ window.initDigestViewer = function (ARTIFACTS) {
     if (e.ctrlKey && (e.key === 't' || e.key === 'T')) {
       e.preventDefault();
       const todosEl = document.getElementById('todos');
-      if (todosEl && sidebarEl.style.display !== 'none') {
+      if (todosEl && !sidebarEl.classList.contains('sidebar-hidden')) {
         if (document.activeElement === todosEl) {
           todosEl.blur();
           document.getElementById('card-scroll').focus();
@@ -605,7 +878,7 @@ window.initDigestViewer = function (ARTIFACTS) {
   const copyBtn = document.getElementById('btn-copy-notes');
   if (copyBtn) {
     copyBtn.onclick = function () {
-      const noted = POSTS.slice(1).filter(p => p.note && p.note.trim());
+      const noted = POSTS.filter(p => p.type !== 'cover' && p.type !== 'review' && p.note && p.note.trim());
       if (noted.length === 0) { showToastFromViewer('No notes to copy', 'error'); return; }
       const lines = [];
       noted.forEach(p => {
@@ -654,7 +927,7 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   function _notesInput() {
     var p = POSTS[current];
-    if (!p || p.type === 'cover') return;
+    if (!p || p.type === 'cover' || p.type === 'review') return;
     var prevText = p.note || '';
     p.note = notesTextarea.value;
     pushTextUndo('note_edit', p.id, prevText);
@@ -670,7 +943,7 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   function _todosInput() {
     var p = POSTS[current];
-    if (!p || p.type === 'cover') return;
+    if (!p || p.type === 'cover' || p.type === 'review') return;
     var prevText = p.todo || '';
     p.todo = todosTextarea.value;
     pushTextUndo('todo_edit', p.id, prevText);
@@ -686,14 +959,14 @@ window.initDigestViewer = function (ARTIFACTS) {
 
   function _notesBlur() {
     var p = POSTS[current];
-    if (!p || p.type === 'cover') return;
+    if (!p || p.type === 'cover' || p.type === 'review') return;
     clearTimeout(_notesSaveTimer);
     saveNoteToApi(p, notesTextarea.value);
   }
 
   function _todosBlur() {
     var p = POSTS[current];
-    if (!p || p.type === 'cover') return;
+    if (!p || p.type === 'cover' || p.type === 'review') return;
     clearTimeout(_todosSaveTimer);
     saveTodoToApi(p, todosTextarea.value);
   }
@@ -753,5 +1026,5 @@ window.initDigestViewer = function (ARTIFACTS) {
   todosTextarea.addEventListener('blur',    _todosBlur);
   todosTextarea.addEventListener('keydown', _todosKeydown);
 
-  renderCard(0); // always start at cover
+  renderCard(0); // start at cover (or review if no artifacts)
 };

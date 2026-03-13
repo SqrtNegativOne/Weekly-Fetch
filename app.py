@@ -13,10 +13,12 @@ What happens step by step:
   5. webview.start() blocks until the user closes the window.
   6. The main thread exits → the daemon server thread exits → process ends.
 """
+import ctypes
 import socket
 import sys
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 # Make src/ importable so `from server import create_app` works
@@ -27,6 +29,29 @@ import webview
 
 from server import create_app
 from dwm import apply_titlebar_style
+
+
+_MUTEX_NAME = "Global\\WeeklyFetchSingleInstance"
+_ERROR_ALREADY_EXISTS = 183  # Windows error code
+
+
+def _acquire_single_instance():
+    """Try to create a named mutex. If another instance holds it, show a
+    message box and exit. The mutex is automatically released when the
+    process terminates — no cleanup needed.
+    """
+    handle = ctypes.windll.kernel32.CreateMutexW(None, True, _MUTEX_NAME)
+    if ctypes.windll.kernel32.GetLastError() == _ERROR_ALREADY_EXISTS:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Weekly Fetch is already running.\n\n"
+            "Check your taskbar — the existing window may be minimized.",
+            "Weekly Fetch",
+            0x40,  # MB_ICONINFORMATION
+        )
+        sys.exit(0)
+    # Keep a reference so the mutex isn't garbage-collected while the app runs
+    return handle
 
 
 class WindowApi:
@@ -52,6 +77,10 @@ class WindowApi:
     def close_window(self):
         if self._win: self._win.destroy()
 
+    def open_in_browser(self, url):
+        """Open a URL in the user's default browser instead of the webview."""
+        if url and (url.startswith("http://") or url.startswith("https://")):
+            webbrowser.open(url)
 
 
 def _find_free_port() -> int:
@@ -93,6 +122,9 @@ def _install_daily_task() -> None:
 
 
 def main():
+    # Block second instance — shows a message box and exits if already running
+    _mutex = _acquire_single_instance()  # noqa: F841 — prevent GC
+
     # Auto-register the daily task on first launch (frozen .exe only).
     # In dev mode sys.frozen is not set, so we skip this to avoid scheduling
     # a .py file as a task.
@@ -146,7 +178,7 @@ def main():
     if start_fullscreen:
         win.events.shown += lambda: win.maximize()
 
-    webview.start(icon=icon_path)   # blocks until the window is closed
+    webview.start(debug=True, icon=icon_path)   # blocks until the window is closed
 
 
 if __name__ == "__main__":

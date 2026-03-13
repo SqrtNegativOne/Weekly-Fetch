@@ -93,7 +93,8 @@
         <!-- Empty state — inside viewer so blobs show behind it -->
         <div id="home-empty" style="display:none">
           <div class="home-empty-card">
-            <div class="home-empty-msg">No artifacts scheduled for today!</div>
+            <div class="home-empty-msg">You are free!</div>
+            <div class="home-empty-sub">You have no pending artifacts, notes, or todos.</div>
           </div>
         </div>
 
@@ -250,6 +251,12 @@
     <div id="view-archive" class="app-view">
       <div class="app-view-content">
         <div class="app-view-header">Archive</div>
+
+        <div class="archive-tabs">
+          <button class="archive-tab active" data-tab="artifacts">Artifacts</button>
+          <button class="archive-tab" data-tab="notes">Notes</button>
+          <button class="archive-tab" data-tab="todos">Todos</button>
+        </div>
 
         <div class="archive-controls">
           <input type="text" id="archive-search" placeholder="Search by title&hellip;" class="archive-search-input">

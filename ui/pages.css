@@ -86,6 +86,35 @@
    Archive Page
    ═══════════════════════════════════════════════════ */
 
+.archive-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.archive-tab {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 6px 18px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur);
+}
+.archive-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.archive-tab.active {
+  background: var(--tab-active-bg);
+  color: var(--bg-deep);
+  border-color: transparent;
+  font-weight: 600;
+}
+
 .archive-controls {
   display: flex; gap: 12px;
   margin-bottom: 20px;

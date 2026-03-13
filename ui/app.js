@@ -133,24 +133,29 @@ function showView(name) {
 // ── Pending artifacts (Home view) ─────────────────────────────────────────────
 
 async function loadPending() {
-  var artifacts;
+  var data;
   try {
-    artifacts = await api('GET', '/api/artifacts/pending');
+    data = await api('GET', '/api/artifacts/pending');
   } catch (e) {
     console.error('Failed to load pending artifacts:', e);
     return;
   }
 
+  var artifacts    = data.artifacts || [];
+  var pendingNotes = data.pending_notes || 0;
+  var pendingTodos = data.pending_todos || 0;
+
   var viewerAppEl = document.getElementById('viewer-app');
   var emptyEl     = document.getElementById('home-empty');
 
-  if (!artifacts || artifacts.length === 0) {
+  if (artifacts.length === 0 && pendingNotes === 0 && pendingTodos === 0) {
+    // Truly empty — nothing to do
     viewerAppEl.style.display = 'none';
     emptyEl.style.display = 'flex';
   } else {
     viewerAppEl.style.display = '';
     emptyEl.style.display = 'none';
-    window.initDigestViewer(artifacts);
+    window.initDigestViewer(data);
   }
 }
 
@@ -159,20 +164,27 @@ async function loadPending() {
 var _archiveOffset = 0;
 var _archiveSearch = '';
 var _archivePlatform = '';
+var _archiveTab = 'artifacts';
 
 async function loadArchive(search, platform, offset, append) {
   _archiveSearch   = search || '';
   _archivePlatform = platform || '';
   _archiveOffset   = offset || 0;
 
-  var artifacts;
+  var items;
   try {
     var params = new URLSearchParams();
     if (_archiveSearch) params.set('search', _archiveSearch);
     if (_archivePlatform) params.set('platform', _archivePlatform);
     params.set('limit', '50');
     params.set('offset', String(_archiveOffset));
-    artifacts = await api('GET', '/api/artifacts/archived?' + params.toString());
+
+    var endpoint;
+    if (_archiveTab === 'notes')    endpoint = '/api/notes/archived';
+    else if (_archiveTab === 'todos') endpoint = '/api/todos/archived';
+    else                              endpoint = '/api/artifacts/archived';
+
+    items = await api('GET', endpoint + '?' + params.toString());
   } catch (e) {
     showToast('Failed to load archive: ' + e.message, 'error');
     return;
@@ -185,14 +197,30 @@ async function loadArchive(search, platform, offset, append) {
     listEl.innerHTML = '';
   }
 
-  if (!artifacts || artifacts.length === 0) {
+  var emptyLabel = _archiveTab === 'notes' ? 'notes' :
+                   _archiveTab === 'todos' ? 'todos' : 'artifacts';
+
+  if (!items || items.length === 0) {
     if (!append) {
-      listEl.innerHTML = '<div class="archive-empty">No archived artifacts found.</div>';
+      listEl.innerHTML = '<div class="archive-empty">No archived ' + emptyLabel + ' found.</div>';
     }
     moreBtn.style.display = 'none';
     return;
   }
 
+  if (_archiveTab === 'notes') {
+    renderArchiveNotes(items, listEl);
+  } else if (_archiveTab === 'todos') {
+    renderArchiveTodos(items, listEl);
+  } else {
+    renderArchiveArtifacts(items, listEl);
+  }
+
+  // Show "Load more" if we got a full page
+  moreBtn.style.display = items.length >= 50 ? '' : 'none';
+}
+
+function renderArchiveArtifacts(artifacts, listEl) {
   artifacts.forEach(function (a) {
     var row = document.createElement('div');
     row.className = 'archive-item';
@@ -203,7 +231,7 @@ async function loadArchive(search, platform, offset, append) {
     var notePreview = '';
     if (a.note && a.note.trim()) {
       var preview = a.note.replace(/^•\s*/gm, '').trim();
-      if (preview.length > 80) preview = preview.substring(0, 80) + '…';
+      if (preview.length > 80) preview = preview.substring(0, 80) + '\u2026';
       notePreview = '<div class="archive-item-note">' + escHtml(preview) + '</div>';
     }
 
@@ -231,9 +259,72 @@ async function loadArchive(search, platform, offset, append) {
 
     listEl.appendChild(row);
   });
+}
 
-  // Show "Load more" if we got a full page
-  moreBtn.style.display = artifacts.length >= 50 ? '' : 'none';
+function renderArchiveNotes(notes, listEl) {
+  notes.forEach(function (n) {
+    var row = document.createElement('div');
+    row.className = 'archive-item';
+    if (n.platform) row.classList.add('archive-item-' + n.platform);
+
+    var archivedDate = '';
+    if (n.archived_at) {
+      archivedDate = new Date(n.archived_at).toLocaleDateString();
+    }
+
+    var preview = (n.note_text || '').replace(/^•\s*/gm, '').trim();
+    if (preview.length > 200) preview = preview.substring(0, 200) + '\u2026';
+
+    row.innerHTML =
+      '<div class="archive-item-title">' +
+        '<a href="' + escHtml(n.link || '#') + '" target="_blank" rel="noopener">' +
+          escHtml(n.title || '[Post]') +
+        '</a>' +
+      '</div>' +
+      '<div class="archive-item-meta">' +
+        '<span class="platform-badge pb-' + (n.platform || 'reddit') + '">' +
+          escHtml(n.platform || 'reddit') +
+        '</span> ' +
+        '<span>' + escHtml(n.source_name || '') + '</span>' +
+        (archivedDate ? '<span class="archive-item-date">' + archivedDate + '</span>' : '') +
+      '</div>' +
+      '<div class="archive-item-note">' + escHtml(preview) + '</div>';
+
+    listEl.appendChild(row);
+  });
+}
+
+function renderArchiveTodos(todos, listEl) {
+  todos.forEach(function (t) {
+    var row = document.createElement('div');
+    row.className = 'archive-item';
+    if (t.platform) row.classList.add('archive-item-' + t.platform);
+
+    var archivedDate = '';
+    if (t.archived_at) {
+      archivedDate = new Date(t.archived_at).toLocaleDateString();
+    }
+
+    var preview = (t.todo_text || '').trim();
+    if (preview.length > 200) preview = preview.substring(0, 200) + '\u2026';
+
+    row.innerHTML =
+      '<div class="archive-item-title">' +
+        '<a href="' + escHtml(t.link || '#') + '" target="_blank" rel="noopener">' +
+          escHtml(t.title || '[Post]') +
+        '</a>' +
+      '</div>' +
+      '<div class="archive-item-meta">' +
+        '<span class="platform-badge pb-' + (t.platform || 'reddit') + '">' +
+          escHtml(t.platform || 'reddit') +
+        '</span> ' +
+        '<span>' + escHtml(t.source_name || '') + '</span>' +
+        (archivedDate ? '<span class="archive-item-date">' + archivedDate + '</span>' : '') +
+      '</div>' +
+      '<div class="archive-item-note">' + escHtml(preview) + '</div>';
+
+    listEl.appendChild(row);
+  });
 }
 
 function escHtml(s) {
@@ -348,6 +439,62 @@ var PLATFORM_CONFIG = {
   twitter:   { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'elonmusk' },
 };
 
+/**
+ * Try to extract a clean source ID from a pasted URL.
+ * Returns the extracted ID, or null if the value isn't a URL.
+ * Returns '' (empty string) if it looks like a URL but we can't parse it.
+ */
+function tryParseSourceUrl(platform, value) {
+  value = value.trim();
+  // Only attempt parsing if it looks like a URL
+  if (!/^https?:\/\//i.test(value) && !value.includes('.com') && !value.includes('.org') &&
+      !value.includes('.net') && !value.includes('.social') && !value.includes('.app')) {
+    return null; // not a URL — leave it as-is
+  }
+
+  var m;
+  if (platform === 'reddit') {
+    // https://www.reddit.com/r/MachineLearning/...
+    m = value.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/);
+    return m ? m[1] : '';
+  }
+  if (platform === 'bluesky') {
+    // https://bsky.app/profile/jay.bsky.social
+    m = value.match(/bsky\.app\/profile\/([A-Za-z0-9._-]+)/);
+    return m ? m[1] : '';
+  }
+  if (platform === 'tumblr') {
+    // https://staff.tumblr.com/ or https://www.tumblr.com/staff
+    m = value.match(/tumblr\.com\/([A-Za-z0-9_-]+)/) || value.match(/([A-Za-z0-9_-]+)\.tumblr\.com/);
+    if (m) {
+      var blog = m[1];
+      if (blog === 'www') {
+        // try the path form: tumblr.com/blogname
+        m = value.match(/tumblr\.com\/([A-Za-z0-9_-]+)/);
+        return m ? m[1] : '';
+      }
+      return blog;
+    }
+    return '';
+  }
+  if (platform === 'instagram') {
+    // https://www.instagram.com/natgeo/
+    m = value.match(/instagram\.com\/([A-Za-z0-9._]+)/);
+    return m ? m[1] : '';
+  }
+  if (platform === 'mastodon') {
+    // https://mastodon.social/@username → username@mastodon.social
+    m = value.match(/https?:\/\/([^/]+)\/@([A-Za-z0-9_]+)/);
+    return m ? (m[2] + '@' + m[1]) : '';
+  }
+  if (platform === 'twitter') {
+    // https://twitter.com/elonmusk or https://x.com/elonmusk
+    m = value.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/);
+    return m ? m[1] : '';
+  }
+  return null;
+}
+
 var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function scheduleToDisplay(sched) {
@@ -388,6 +535,23 @@ function createEntryRow(platform, entry) {
   nameInput.className = 'entry-name';
   nameInput.placeholder = cfg.namePlaceholder;
   nameInput.value = name;
+
+  // Auto-convert pasted URLs to clean source IDs
+  function _tryConvertUrl() {
+    var result = tryParseSourceUrl(platform, nameInput.value);
+    if (result === null) return; // not a URL, leave it
+    if (result === '') {
+      nameInput.value = '';
+      showToast('Could not parse URL for ' + platform, 'error');
+    } else {
+      nameInput.value = result;
+    }
+  }
+  nameInput.addEventListener('paste', function () {
+    // Defer so the pasted value is in the input
+    setTimeout(_tryConvertUrl, 0);
+  });
+  nameInput.addEventListener('blur', _tryConvertUrl);
 
   var removeBtn = document.createElement('button');
   removeBtn.type = 'button';
@@ -743,6 +907,18 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // Archive: Tab switching
+  document.querySelectorAll('.archive-tab').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.archive-tab').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+      });
+      _archiveTab = btn.dataset.tab;
+      _archiveOffset = 0;
+      loadArchive(archiveSearchEl.value, archiveFilterEl.value, 0, false);
+    });
+  });
+
   // Archive: Load More button
   var archiveMoreBtn = document.getElementById('btn-archive-more');
   if (archiveMoreBtn) {
@@ -779,4 +955,18 @@ document.addEventListener('DOMContentLoaded', function () {
     await _origPoll();
     adjustPollRate();
   };
+
+  // ── External links → open in default browser ─────────────────────────────
+  // Intercept clicks on <a target="_blank"> and route them through pywebview's
+  // Python bridge instead of letting the webview navigate internally.
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest('a[target="_blank"]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (!href || href === '#') return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.open_in_browser) {
+      e.preventDefault();
+      window.pywebview.api.open_in_browser(href);
+    }
+  });
 });

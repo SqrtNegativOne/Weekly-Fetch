@@ -157,6 +157,7 @@
   border-radius: var(--r-md);
   padding: 8px 10px;
   transition: border-color var(--dur);
+  overflow: hidden;
 }
 .entry-row:hover { border-color: var(--border-light); }
 .entry-row:focus-within { border-color: var(--accent); }
@@ -263,6 +264,7 @@
 .entry-thresh-wrap {
   display: flex; align-items: center; gap: 5px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 .entry-thresh-label {
   font-size: var(--text-xs);

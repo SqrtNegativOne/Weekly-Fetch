@@ -44,7 +44,11 @@ if str(_SRC) not in sys.path:
 from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
 from db import (archive_artifact, get_archived, get_artifact, get_pending,
                 get_usage_stats, init_db, save_note, save_todo,
-                save_usage_session, unarchive_artifact)
+                save_usage_session, unarchive_artifact,
+                archive_note, unarchive_note, archive_todo, unarchive_todo,
+                archive_all_notes, archive_all_todos,
+                get_pending_notes_todos, count_pending_notes_todos,
+                get_archived_notes, get_archived_todos)
 from log import logger
 
 _UI = BUNDLE_DIR / "ui"
@@ -73,10 +77,15 @@ def create_app() -> FastAPI:
 
     # ── Artifacts ──────────────────────────────────────────────────────────────
     @app.get("/api/artifacts/pending")
-    def list_pending() -> list:
+    def list_pending() -> dict:
         db = _db_path()
         init_db(db)
-        return get_pending(db)
+        counts = count_pending_notes_todos(db)
+        return {
+            "artifacts": get_pending(db),
+            "pending_notes": counts["notes"],
+            "pending_todos": counts["todos"],
+        }
 
     @app.get("/api/artifacts/archived")
     def list_archived(search: str = "", platform: str = "",
@@ -119,6 +128,63 @@ def create_app() -> FastAPI:
         body = await request.json()
         save_todo(_db_path(), artifact_id, body.get("text", ""))
         return {"ok": True}
+
+    # ── Notes / Todos — independent status ──────────────────────────────────
+    @app.post("/api/notes/{artifact_id}/archive")
+    def do_archive_note(artifact_id: int) -> dict:
+        archive_note(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/notes/{artifact_id}/unarchive")
+    def do_unarchive_note(artifact_id: int) -> dict:
+        unarchive_note(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/todos/{artifact_id}/archive")
+    def do_archive_todo(artifact_id: int) -> dict:
+        archive_todo(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/todos/{artifact_id}/unarchive")
+    def do_unarchive_todo(artifact_id: int) -> dict:
+        unarchive_todo(_db_path(), artifact_id)
+        return {"ok": True}
+
+    @app.post("/api/notes/archive-all")
+    def do_archive_all_notes() -> dict:
+        count = archive_all_notes(_db_path())
+        return {"ok": True, "count": count}
+
+    @app.post("/api/todos/archive-all")
+    def do_archive_all_todos() -> dict:
+        count = archive_all_todos(_db_path())
+        return {"ok": True, "count": count}
+
+    @app.get("/api/pending-review")
+    def pending_review() -> dict:
+        db = _db_path()
+        init_db(db)
+        return get_pending_notes_todos(db)
+
+    @app.get("/api/notes/archived")
+    def list_archived_notes(search: str = "", platform: str = "",
+                            limit: int = 50, offset: int = 0) -> list:
+        db = _db_path()
+        init_db(db)
+        return get_archived_notes(db,
+                                  search=search or None,
+                                  platform=platform or None,
+                                  limit=limit, offset=offset)
+
+    @app.get("/api/todos/archived")
+    def list_archived_todos(search: str = "", platform: str = "",
+                            limit: int = 50, offset: int = 0) -> list:
+        db = _db_path()
+        init_db(db)
+        return get_archived_todos(db,
+                                  search=search or None,
+                                  platform=platform or None,
+                                  limit=limit, offset=offset)
 
     # ── Accounts ──────────────────────────────────────────────────────────────
     @app.get("/api/accounts")

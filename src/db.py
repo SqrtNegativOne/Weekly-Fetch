@@ -61,6 +61,22 @@ def init_db(db_path: Path) -> None:
             );
         """)
 
+        # Migration: add status + archived_at columns to notes and todos
+        for table in ("notes", "todos"):
+            for col, definition in (
+                ("status",      "TEXT NOT NULL DEFAULT 'pending'"),
+                ("archived_at", "TEXT"),
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status);
+            CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
+        """)
+
 
 def save_artifacts(db_path: Path, platform: str,
                    source_name: str, artifacts: list) -> int:
@@ -100,7 +116,9 @@ def get_pending(db_path: Path) -> list[dict]:
             SELECT a.id, a.platform, a.source_name, a.title, a.link,
                    a.score, a.post_type, a.content_json, a.comments_json,
                    COALESCE(n.note_text, '') AS note_text,
-                   COALESCE(t.todo_text, '') AS todo_text
+                   COALESCE(t.todo_text, '') AS todo_text,
+                   COALESCE(n.status, '') AS note_status,
+                   COALESCE(t.status, '') AS todo_status
             FROM   artifacts a
             LEFT JOIN notes n ON n.artifact_id = a.id
             LEFT JOIN todos t ON t.artifact_id = a.id
@@ -140,7 +158,9 @@ def get_archived(db_path: Path, search: str | None = None,
                    a.score, a.post_type, a.content_json, a.comments_json,
                    a.archived_at,
                    COALESCE(n.note_text, '') AS note_text,
-                   COALESCE(t.todo_text, '') AS todo_text
+                   COALESCE(t.todo_text, '') AS todo_text,
+                   COALESCE(n.status, '') AS note_status,
+                   COALESCE(t.status, '') AS todo_status
             FROM   artifacts a
             LEFT JOIN notes n ON n.artifact_id = a.id
             LEFT JOIN todos t ON t.artifact_id = a.id
@@ -160,7 +180,9 @@ def get_artifact(db_path: Path, artifact_id: int) -> dict | None:
                    a.score, a.post_type, a.content_json, a.comments_json,
                    a.status, a.archived_at,
                    COALESCE(n.note_text, '') AS note_text,
-                   COALESCE(t.todo_text, '') AS todo_text
+                   COALESCE(t.todo_text, '') AS todo_text,
+                   COALESCE(n.status, '') AS note_status,
+                   COALESCE(t.status, '') AS todo_status
             FROM   artifacts a
             LEFT JOIN notes n ON n.artifact_id = a.id
             LEFT JOIN todos t ON t.artifact_id = a.id
@@ -191,13 +213,14 @@ def unarchive_artifact(db_path: Path, artifact_id: int) -> None:
 
 
 def save_note(db_path: Path, artifact_id: int, text: str) -> None:
-    """Upsert a note. Deletes the row when text is blank."""
+    """Upsert a note. Deletes the row when text is blank.
+    New notes start as pending; updates preserve existing status."""
     updated_at = datetime.now().isoformat()
     with _connect(db_path) as conn:
         if text.strip():
             conn.execute("""
-                INSERT INTO notes (artifact_id, note_text, updated_at)
-                VALUES (?, ?, ?)
+                INSERT INTO notes (artifact_id, note_text, updated_at, status)
+                VALUES (?, ?, ?, 'pending')
                 ON CONFLICT(artifact_id) DO UPDATE SET
                     note_text  = excluded.note_text,
                     updated_at = excluded.updated_at
@@ -207,13 +230,14 @@ def save_note(db_path: Path, artifact_id: int, text: str) -> None:
 
 
 def save_todo(db_path: Path, artifact_id: int, text: str) -> None:
-    """Upsert a todo. Deletes the row when text is blank."""
+    """Upsert a todo. Deletes the row when text is blank.
+    New todos start as pending; updates preserve existing status."""
     updated_at = datetime.now().isoformat()
     with _connect(db_path) as conn:
         if text.strip():
             conn.execute("""
-                INSERT INTO todos (artifact_id, todo_text, updated_at)
-                VALUES (?, ?, ?)
+                INSERT INTO todos (artifact_id, todo_text, updated_at, status)
+                VALUES (?, ?, ?, 'pending')
                 ON CONFLICT(artifact_id) DO UPDATE SET
                     todo_text  = excluded.todo_text,
                     updated_at = excluded.updated_at
@@ -341,6 +365,215 @@ def get_usage_stats(db_path: Path) -> dict:
     }
 
 
+# ── Note / Todo independent status operations ────────────────────────────────
+
+def archive_note(db_path: Path, artifact_id: int) -> None:
+    """Set a note's status to 'archived'."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE notes SET status = 'archived', archived_at = ?
+            WHERE artifact_id = ?
+        """, (datetime.now().isoformat(), artifact_id))
+
+
+def unarchive_note(db_path: Path, artifact_id: int) -> None:
+    """Set a note's status back to 'pending'."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE notes SET status = 'pending', archived_at = NULL
+            WHERE artifact_id = ?
+        """, (artifact_id,))
+
+
+def archive_todo(db_path: Path, artifact_id: int) -> None:
+    """Set a todo's status to 'archived'."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE todos SET status = 'archived', archived_at = ?
+            WHERE artifact_id = ?
+        """, (datetime.now().isoformat(), artifact_id))
+
+
+def unarchive_todo(db_path: Path, artifact_id: int) -> None:
+    """Set a todo's status back to 'pending'."""
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE todos SET status = 'pending', archived_at = NULL
+            WHERE artifact_id = ?
+        """, (artifact_id,))
+
+
+def archive_all_notes(db_path: Path) -> int:
+    """Bulk-archive all pending notes. Returns count archived."""
+    now = datetime.now().isoformat()
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE notes SET status = 'archived', archived_at = ?
+            WHERE status = 'pending'
+        """, (now,))
+        return conn.execute("SELECT changes()").fetchone()[0]
+
+
+def archive_all_todos(db_path: Path) -> int:
+    """Bulk-archive all pending todos. Returns count archived."""
+    now = datetime.now().isoformat()
+    with _connect(db_path) as conn:
+        conn.execute("""
+            UPDATE todos SET status = 'archived', archived_at = ?
+            WHERE status = 'pending'
+        """, (now,))
+        return conn.execute("SELECT changes()").fetchone()[0]
+
+
+def get_pending_notes_todos(db_path: Path) -> dict:
+    """Return all pending notes and todos with artifact context.
+
+    Returns {notes: [...], todos: [...]} where each item has:
+      artifact_id, note_text/todo_text, updated_at,
+      title, platform, source_name, link
+    """
+    if not db_path.exists():
+        return {"notes": [], "todos": []}
+
+    with _connect(db_path) as conn:
+        note_rows = conn.execute("""
+            SELECT n.artifact_id, n.note_text, n.updated_at,
+                   a.title, a.platform, a.source_name, a.link
+            FROM notes n
+            JOIN artifacts a ON a.id = n.artifact_id
+            WHERE n.status = 'pending'
+            ORDER BY n.updated_at DESC
+        """).fetchall()
+
+        todo_rows = conn.execute("""
+            SELECT t.artifact_id, t.todo_text, t.updated_at,
+                   a.title, a.platform, a.source_name, a.link
+            FROM todos t
+            JOIN artifacts a ON a.id = t.artifact_id
+            WHERE t.status = 'pending'
+            ORDER BY t.updated_at DESC
+        """).fetchall()
+
+    return {
+        "notes": [_note_row_to_dict(r) for r in note_rows],
+        "todos": [_todo_row_to_dict(r) for r in todo_rows],
+    }
+
+
+def count_pending_notes_todos(db_path: Path) -> dict:
+    """Return {notes: N, todos: N} counts of pending notes/todos."""
+    if not db_path.exists():
+        return {"notes": 0, "todos": 0}
+    with _connect(db_path) as conn:
+        nc = conn.execute(
+            "SELECT COUNT(*) FROM notes WHERE status = 'pending'"
+        ).fetchone()[0]
+        tc = conn.execute(
+            "SELECT COUNT(*) FROM todos WHERE status = 'pending'"
+        ).fetchone()[0]
+    return {"notes": nc, "todos": tc}
+
+
+def get_archived_notes(db_path: Path, search: str | None = None,
+                       platform: str | None = None,
+                       limit: int = 50, offset: int = 0) -> list[dict]:
+    """Return archived notes with artifact context, paginated."""
+    if not db_path.exists():
+        return []
+
+    conditions = ["n.status = 'archived'"]
+    params: list = []
+
+    if search:
+        conditions.append("(n.note_text LIKE ? OR a.title LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    if platform:
+        conditions.append("a.platform = ?")
+        params.append(platform)
+
+    where = " AND ".join(conditions)
+    params.extend([limit, offset])
+
+    with _connect(db_path) as conn:
+        rows = conn.execute(f"""
+            SELECT n.artifact_id, n.note_text, n.updated_at, n.archived_at,
+                   a.title, a.platform, a.source_name, a.link
+            FROM notes n
+            JOIN artifacts a ON a.id = n.artifact_id
+            WHERE {where}
+            ORDER BY n.archived_at DESC
+            LIMIT ? OFFSET ?
+        """, params).fetchall()
+
+    return [_note_row_to_dict(r) for r in rows]
+
+
+def get_archived_todos(db_path: Path, search: str | None = None,
+                       platform: str | None = None,
+                       limit: int = 50, offset: int = 0) -> list[dict]:
+    """Return archived todos with artifact context, paginated."""
+    if not db_path.exists():
+        return []
+
+    conditions = ["t.status = 'archived'"]
+    params: list = []
+
+    if search:
+        conditions.append("(t.todo_text LIKE ? OR a.title LIKE ?)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    if platform:
+        conditions.append("a.platform = ?")
+        params.append(platform)
+
+    where = " AND ".join(conditions)
+    params.extend([limit, offset])
+
+    with _connect(db_path) as conn:
+        rows = conn.execute(f"""
+            SELECT t.artifact_id, t.todo_text, t.updated_at, t.archived_at,
+                   a.title, a.platform, a.source_name, a.link
+            FROM todos t
+            JOIN artifacts a ON a.id = t.artifact_id
+            WHERE {where}
+            ORDER BY t.archived_at DESC
+            LIMIT ? OFFSET ?
+        """, params).fetchall()
+
+    return [_todo_row_to_dict(r) for r in rows]
+
+
+def _note_row_to_dict(r) -> dict:
+    """Convert a note row (with artifact context) to dict."""
+    d = {
+        "artifact_id":  r["artifact_id"],
+        "note_text":    r["note_text"],
+        "updated_at":   r["updated_at"],
+        "title":        r["title"],
+        "platform":     r["platform"],
+        "source_name":  r["source_name"],
+        "link":         r["link"],
+    }
+    if "archived_at" in r.keys():
+        d["archived_at"] = r["archived_at"]
+    return d
+
+
+def _todo_row_to_dict(r) -> dict:
+    """Convert a todo row (with artifact context) to dict."""
+    d = {
+        "artifact_id":  r["artifact_id"],
+        "todo_text":    r["todo_text"],
+        "updated_at":   r["updated_at"],
+        "title":        r["title"],
+        "platform":     r["platform"],
+        "source_name":  r["source_name"],
+        "link":         r["link"],
+    }
+    if "archived_at" in r.keys():
+        d["archived_at"] = r["archived_at"]
+    return d
+
+
 def _row_to_dict(r) -> dict:
     """Convert a sqlite3.Row to the dict format the UI expects."""
     d = {
@@ -360,4 +593,8 @@ def _row_to_dict(r) -> dict:
         d["archived_at"] = r["archived_at"]
     if "status" in r.keys():
         d["status"] = r["status"]
+    if "note_status" in r.keys():
+        d["note_status"] = r["note_status"]
+    if "todo_status" in r.keys():
+        d["todo_status"] = r["todo_status"]
     return d
