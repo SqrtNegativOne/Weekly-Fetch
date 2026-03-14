@@ -183,7 +183,7 @@ def main():
     if start_fullscreen:
         win.events.shown += lambda: win.maximize()
 
-    webview.start(debug=True, icon=icon_path)   # blocks until the window is closed
+    webview.start(debug=False, icon=icon_path)  # blocks until the window is closed
 
 
 if __name__ == "__main__":

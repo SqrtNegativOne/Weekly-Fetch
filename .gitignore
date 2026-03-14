@@ -184,6 +184,8 @@ output/*
 
 bash.exe.stackdump
 
+*.db
+
 todo.txt
 
 .superpowers/

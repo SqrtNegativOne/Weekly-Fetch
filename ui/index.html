@@ -46,11 +46,11 @@
         <span class="nav-label">Sources</span>
       </button>
       <button class="nav-btn" data-view="archive">
-        <span class="nav-icon">&#x2610;</span>
+        <span class="nav-icon">&#x1F5C4;&#xFE0E;</span>
         <span class="nav-label">Archive</span>
       </button>
       <button class="nav-btn" data-view="usage">
-        <span class="nav-icon">&#x25F0;</span>
+        <span class="nav-icon">&#x1F552;</span>
         <span class="nav-label">Usage</span>
       </button>
       <button class="nav-btn" data-view="settings">
@@ -144,68 +144,98 @@
       <div class="app-view-content">
         <div class="app-view-header">Sources</div>
 
-        <div class="source-section" data-platform="reddit">
-          <div class="source-header">
-            <span class="source-header-name">REDDIT</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="reddit-min-karma" value="100" min="0" class="source-default-input"> karma</span>
+        <div class="plat" data-p="reddit">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Reddit</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="reddit-min-karma" class="source-default-input" value="100"> karma</span>
           </div>
-          <div id="reddit-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('reddit')">+ add subreddit +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div id="reddit-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('reddit')">+ add subreddit +</button>
+          </div></div>
         </div>
 
-        <div class="source-section" data-platform="bluesky">
-          <div class="source-header">
-            <span class="source-header-name">BLUESKY</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="bluesky-min-likes" value="10" min="0" class="source-default-input"> likes</span>
+        <div class="plat" data-p="bluesky">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Bluesky</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="bluesky-min-likes" class="source-default-input" value="10"> likes</span>
           </div>
-          <div id="bluesky-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('bluesky')">+ add account +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div id="bluesky-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('bluesky')">+ add account +</button>
+          </div></div>
         </div>
 
-        <div class="source-section" data-platform="tumblr">
-          <div class="source-header">
-            <span class="source-header-name">TUMBLR</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="tumblr-min-notes" value="5" min="0" class="source-default-input"> notes</span>
+        <div class="plat" data-p="tumblr">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Tumblr</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="tumblr-min-notes" class="source-default-input" value="5"> notes</span>
           </div>
-          <div id="tumblr-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('tumblr')">+ add blog +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div id="tumblr-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('tumblr')">+ add blog +</button>
+          </div></div>
         </div>
 
-        <div class="source-section" data-platform="instagram">
-          <div class="source-header">
-            <span class="source-header-name">INSTAGRAM</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="instagram-min-likes" value="100" min="0" class="source-default-input"> likes</span>
+        <div class="plat" data-p="instagram">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Instagram</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="instagram-min-likes" class="source-default-input" value="100"> likes</span>
           </div>
-          <div id="instagram-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('instagram')">+ add account +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div id="instagram-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('instagram')">+ add account +</button>
+          </div></div>
         </div>
 
-        <div class="source-section" data-platform="mastodon">
-          <div class="source-header">
-            <span class="source-header-name">MASTODON</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="mastodon-min-favorites" value="10" min="0" class="source-default-input"> favorites</span>
+        <div class="plat" data-p="mastodon">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Mastodon</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="mastodon-min-favorites" class="source-default-input" value="10"> favorites</span>
           </div>
-          <div id="mastodon-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('mastodon')">+ add account +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div id="mastodon-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('mastodon')">+ add account +</button>
+          </div></div>
         </div>
 
-        <div class="source-section" data-platform="twitter">
-          <div class="source-header">
-            <span class="source-header-name">TWITTER / X</span>
-            <span class="source-header-rule"></span>
-            <span class="source-header-default">default <input type="number" id="twitter-min-likes" value="50" min="0" class="source-default-input"> likes</span>
+        <div class="plat" data-p="twitter">
+          <div class="plat-header">
+            <span class="plat-label" onclick="togglePlatSection(this)">
+              <button type="button" class="plat-toggle">&#x25BE;</button>
+              <span class="plat-name">Twitter / X</span>
+            </span>
+            <span class="plat-rule"></span>
+            <span class="plat-default">default <input type="number" id="twitter-min-likes" class="source-default-input" value="50"> likes</span>
           </div>
-          <div class="source-extra">
-            <span class="source-word">rss base</span>
-            <input type="text" id="twitter-rss-base" placeholder="https://nitter.privacydev.net" class="source-input source-rss-base">
-          </div>
-          <div id="twitter-entries" class="source-entries"></div>
-          <button type="button" class="source-add" onclick="addEntry('twitter')">+ add account +</button>
+          <div class="plat-collapsible"><div class="plat-collapsible-inner">
+            <div class="source-extra">
+              <span class="source-rss-label">rss base</span>
+              <input type="text" id="twitter-rss-base" class="source-rss-input" placeholder="https://nitter.privacydev.net">
+            </div>
+            <div id="twitter-entries" class="entries"></div>
+            <button type="button" class="source-add" onclick="addEntry('twitter')">+ add account +</button>
+          </div></div>
         </div>
 
         <div class="form-actions">

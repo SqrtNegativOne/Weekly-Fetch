@@ -507,15 +507,18 @@ function tryParseSourceUrl(platform, value) {
   return null;
 }
 
-var WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
 function scheduleToDisplay(sched) {
-  if (!sched) return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
-  if (sched.every_weekday)  return { type: 'weekday',  weekday: sched.every_weekday, n: 7, day: 1 };
-  if (sched.every_n_days)   return { type: 'ndays',    weekday: 'Saturday', n: sched.every_n_days, day: 1 };
-  if (sched.day_n_of_month) return { type: 'monthday', weekday: 'Saturday', n: 7, day: sched.day_n_of_month };
-  return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
+  if (!sched) return { mode: 'weeks', n: 1, weekday: 'Saturday', day: 1 };
+  if (sched.every_weekday)  return { mode: 'weeks',  n: 1,                    weekday: sched.every_weekday, day: 1 };
+  if (sched.every_n_days)   return { mode: 'days',   n: sched.every_n_days,   weekday: 'Saturday',          day: 1 };
+  if (sched.every_n_weeks)  return { mode: 'weeks',  n: sched.every_n_weeks,  weekday: 'Saturday',          day: 1 };
+  if (sched.every_n_months) return { mode: 'months', n: sched.every_n_months, weekday: 'Saturday',          day: 1 };
+  if (sched.day_n_of_month) return { mode: 'months', n: 1,                    weekday: 'Saturday',          day: sched.day_n_of_month };
+  return { mode: 'weeks', n: 1, weekday: 'Saturday', day: 1 };
 }
+
+var DAYS_SHORT = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+var DAYS_FULL  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function createEntryRow(platform, entry) {
   var name = typeof entry === 'string' ? entry : (entry.name || '');
@@ -532,179 +535,162 @@ function createEntryRow(platform, entry) {
   var row = document.createElement('div');
   row.className = 'source-entry';
 
-  // Line 1: [prefix][name]                    [×]
-  var line1 = document.createElement('div');
-  line1.className = 'source-line source-line-name';
+  // ── Name row ──────────────────────────────────────
+  var nameRow = document.createElement('div');
+  nameRow.className = 'name-row';
 
   if (cfg.prefix) {
     var prefixSpan = document.createElement('span');
-    prefixSpan.className = 'source-word source-prefix';
+    prefixSpan.className = 'source-prefix';
     prefixSpan.textContent = cfg.prefix;
-    line1.appendChild(prefixSpan);
+    nameRow.appendChild(prefixSpan);
   }
 
   var nameInput = document.createElement('input');
   nameInput.type = 'text';
-  nameInput.className = 'source-input source-name';
+  nameInput.className = 'source-name';
   nameInput.placeholder = cfg.namePlaceholder;
   nameInput.value = name;
 
-  // Auto-convert pasted URLs to clean source IDs
   function _tryConvertUrl() {
     var result = tryParseSourceUrl(platform, nameInput.value);
     if (result === null) return;
-    if (result === '') {
-      nameInput.value = '';
-      showToast('Could not parse URL for ' + platform, 'error');
-    } else {
-      nameInput.value = result;
-    }
+    if (result === '') { nameInput.value = ''; showToast('Could not parse URL for ' + platform, 'error'); }
+    else nameInput.value = result;
   }
-  nameInput.addEventListener('paste', function () {
-    setTimeout(_tryConvertUrl, 0);
-  });
+  nameInput.addEventListener('paste', function () { setTimeout(_tryConvertUrl, 0); });
   nameInput.addEventListener('blur', _tryConvertUrl);
-
-  line1.appendChild(nameInput);
+  nameRow.appendChild(nameInput);
 
   var removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'source-remove';
   removeBtn.textContent = '\u00d7';
-  removeBtn.title = 'Remove';
   removeBtn.onclick = function () { row.remove(); };
-  line1.appendChild(removeBtn);
+  nameRow.appendChild(removeBtn);
 
-  // Line 2: every [N] [days|week|month]
-  var line2 = document.createElement('div');
-  line2.className = 'source-line source-line-sched';
+  row.appendChild(nameRow);
+
+  // ── Schedule row ───────────────────────────────────
+  var schedRow = document.createElement('div');
+  schedRow.className = 'sched-row';
+
+  var schedLeft = document.createElement('div');
+  schedLeft.className = 'sched-left';
 
   var everySpan = document.createElement('span');
-  everySpan.className = 'source-word';
+  everySpan.className = 'word';
   everySpan.textContent = 'every';
-  line2.appendChild(everySpan);
+  schedLeft.appendChild(everySpan);
 
   var nInput = document.createElement('input');
   nInput.type = 'number';
-  nInput.className = 'source-input source-n';
+  nInput.className = 'ul-input n-input';
   nInput.min = '1';
-  nInput.value = ds.n || 7;
+  nInput.value = String(ds.n || 1);
   nInput.dataset.role = 'n';
-  line2.appendChild(nInput);
+  schedLeft.appendChild(nInput);
 
-  var periodSelect = document.createElement('select');
-  periodSelect.className = 'source-select source-period';
+  var unitSel = document.createElement('select');
+  unitSel.className = 'ul-select unit-sel';
+  unitSel.dataset.role = 'unit';
   [
-    { value: 'days',  label: 'days' },
-    { value: 'week',  label: 'week' },
-    { value: 'month', label: 'month' },
+    { value: 'days',   label: 'day(s)'   },
+    { value: 'weeks',  label: 'week(s)'  },
+    { value: 'months', label: 'month(s)' },
   ].forEach(function (opt) {
     var o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label;
-    periodSelect.appendChild(o);
+    o.value = opt.value; o.textContent = opt.label;
+    unitSel.appendChild(o);
   });
+  unitSel.value = ds.mode;
+  schedLeft.appendChild(unitSel);
 
-  if (ds.type === 'ndays')        periodSelect.value = 'days';
-  else if (ds.type === 'weekday') periodSelect.value = 'week';
-  else if (ds.type === 'monthday') periodSelect.value = 'month';
+  // "on" + day pills (weeks only)
+  var onWeekEls = [];
 
-  line2.appendChild(periodSelect);
+  var onSpanWeeks = document.createElement('span');
+  onSpanWeeks.className = 'word';
+  onSpanWeeks.textContent = 'on';
+  schedLeft.appendChild(onSpanWeeks);
+  onWeekEls.push(onSpanWeeks);
 
-  // Line 3: on [Saturday] / on the [1] day  (conditional)
-  var line3 = document.createElement('div');
-  line3.className = 'source-line source-line-on';
+  var pillsWrap = document.createElement('div');
+  pillsWrap.className = 'day-pills';
+  DAYS_SHORT.forEach(function (letter, i) {
+    var pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'day-pill';
+    pill.textContent = letter;
+    pill.dataset.day = DAYS_FULL[i];
+    if (DAYS_FULL[i] === ds.weekday) pill.classList.add('active');
+    pill.onclick = function () {
+      pillsWrap.querySelectorAll('.day-pill').forEach(function (p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+    };
+    pillsWrap.appendChild(pill);
+  });
+  schedLeft.appendChild(pillsWrap);
+  onWeekEls.push(pillsWrap);
 
-  function buildOnLine(period, weekday, day) {
-    line3.innerHTML = '';
+  // "on day" + input (months only)
+  var onMonthEls = [];
 
-    if (period === 'days') {
-      line3.style.display = 'none';
-      nInput.style.display = '';
-      return;
-    }
+  var onDaySpan = document.createElement('span');
+  onDaySpan.className = 'word';
+  onDaySpan.textContent = 'on day';
+  schedLeft.appendChild(onDaySpan);
+  onMonthEls.push(onDaySpan);
 
-    nInput.style.display = 'none';
-    line3.style.display = '';
+  var dayInput = document.createElement('input');
+  dayInput.type = 'number';
+  dayInput.className = 'ul-input monthday-input';
+  dayInput.min = '1'; dayInput.max = '31';
+  dayInput.value = String(ds.day || 1);
+  dayInput.dataset.role = 'monthday';
+  schedLeft.appendChild(dayInput);
+  onMonthEls.push(dayInput);
 
-    var onSpan = document.createElement('span');
-    onSpan.className = 'source-word';
-    onSpan.textContent = 'on';
-    line3.appendChild(onSpan);
-
-    if (period === 'week') {
-      var weekdaySelect = document.createElement('select');
-      weekdaySelect.className = 'source-select source-weekday';
-      weekdaySelect.dataset.role = 'weekday';
-      WEEKDAYS.forEach(function (d) {
-        var o = document.createElement('option');
-        o.value = d; o.textContent = d;
-        weekdaySelect.appendChild(o);
-      });
-      weekdaySelect.value = weekday || 'Saturday';
-      line3.appendChild(weekdaySelect);
-    } else if (period === 'month') {
-      var theSpan = document.createElement('span');
-      theSpan.className = 'source-word';
-      theSpan.textContent = 'the';
-      line3.appendChild(theSpan);
-
-      var dayInput = document.createElement('input');
-      dayInput.type = 'number';
-      dayInput.className = 'source-input source-day';
-      dayInput.min = '1';
-      dayInput.max = '31';
-      dayInput.value = day || 1;
-      dayInput.dataset.role = 'day';
-      line3.appendChild(dayInput);
-
-      var dayLabel = document.createElement('span');
-      dayLabel.className = 'source-word';
-      dayLabel.textContent = 'day';
-      line3.appendChild(dayLabel);
-    }
+  function applyMode(mode) {
+    onWeekEls.forEach(function (el)  { el.style.display = mode === 'weeks'  ? '' : 'none'; });
+    onMonthEls.forEach(function (el) { el.style.display = mode === 'months' ? '' : 'none'; });
   }
+  applyMode(ds.mode);
+  unitSel.onchange = function () { applyMode(unitSel.value); };
 
-  buildOnLine(
-    periodSelect.value,
-    ds.weekday,
-    ds.day
-  );
+  schedRow.appendChild(schedLeft);
 
-  periodSelect.onchange = function () {
-    var curWeekday = (line3.querySelector('[data-role="weekday"]') || {}).value || ds.weekday;
-    var curDay = (line3.querySelector('[data-role="day"]') || {}).value || ds.day;
-    buildOnLine(periodSelect.value, curWeekday, curDay);
-  };
+  // Right: threshold
+  var schedRight = document.createElement('div');
+  schedRight.className = 'sched-right';
 
-  // Line 4: above [threshold] karma.
-  var line4 = document.createElement('div');
-  line4.className = 'source-line source-line-thresh';
-
-  var aboveSpan = document.createElement('span');
-  aboveSpan.className = 'source-word';
-  aboveSpan.textContent = 'above';
-  line4.appendChild(aboveSpan);
+  var gteSpan = document.createElement('span');
+  gteSpan.className = 'gte';
+  gteSpan.textContent = '\u2265';
+  schedRight.appendChild(gteSpan);
 
   var threshInput = document.createElement('input');
   threshInput.type = 'number';
-  threshInput.className = 'source-input source-thresh';
+  threshInput.className = 'ul-input thresh-input';
   threshInput.placeholder = 'default';
   threshInput.min = '0';
   threshInput.value = threshVal;
-  line4.appendChild(threshInput);
+  threshInput.dataset.role = 'thresh';
+  schedRight.appendChild(threshInput);
 
-  var threshLabelSpan = document.createElement('span');
-  threshLabelSpan.className = 'source-word';
-  threshLabelSpan.textContent = cfg.thresholdLabel + '.';
-  line4.appendChild(threshLabelSpan);
+  var threshLabel = document.createElement('span');
+  threshLabel.className = 'word';
+  threshLabel.textContent = cfg.thresholdLabel;
+  schedRight.appendChild(threshLabel);
 
-  row.appendChild(line1);
-  row.appendChild(line2);
-  row.appendChild(line3);
-  row.appendChild(line4);
+  schedRow.appendChild(schedRight);
+  row.appendChild(schedRow);
   return row;
 }
+
+window.togglePlatSection = function (el) {
+  el.closest('.plat').classList.toggle('collapsed');
+};
 
 window.addEntry = function (platform) {
   var container = document.getElementById(platform + '-entries');
@@ -730,25 +716,25 @@ function collectEntries(platform) {
     var name = row.querySelector('.source-name').value.trim();
     if (!name) return;
 
-    var period = row.querySelector('.source-period').value;
-    var nEl = row.querySelector('[data-role="n"]');
-    var weekdayEl = row.querySelector('[data-role="weekday"]');
-    var dayEl = row.querySelector('[data-role="day"]');
+    var n = Math.max(1, parseInt(row.querySelector('[data-role="n"]').value) || 1);
+    var unit = row.querySelector('[data-role="unit"]').value;
+    var activePill = row.querySelector('.day-pill.active');
+    var weekday = activePill ? activePill.dataset.day : 'Saturday';
+    var dayEl = row.querySelector('[data-role="monthday"]');
+    var day = Math.max(1, Math.min(31, parseInt((dayEl && dayEl.value) || '1') || 1));
 
     var schedule;
-    if (period === 'days') {
-      schedule = { every_n_days: Math.max(1, parseInt(nEl ? nEl.value : 7) || 7) };
-    } else if (period === 'week') {
-      schedule = { every_weekday: weekdayEl ? weekdayEl.value : 'Saturday' };
-    } else if (period === 'month') {
-      schedule = { day_n_of_month: Math.max(1, Math.min(31, parseInt(dayEl ? dayEl.value : 1) || 1)) };
+    if (unit === 'days') {
+      schedule = { every_n_days: n };
+    } else if (unit === 'weeks') {
+      schedule = n === 1 ? { every_weekday: weekday } : { every_n_weeks: n };
+    } else {
+      schedule = { day_n_of_month: day };
     }
 
-    var threshVal = row.querySelector('.source-thresh').value.trim();
+    var threshVal = row.querySelector('[data-role="thresh"]').value.trim();
     var entry = { name: name, schedule: schedule };
-    if (threshVal !== '') {
-      entry[cfg.thresholdKey] = parseInt(threshVal) || 0;
-    }
+    if (threshVal !== '') entry[cfg.thresholdKey] = parseInt(threshVal) || 0;
     entries.push(entry);
   });
   return entries;
