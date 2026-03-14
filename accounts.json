@@ -1,6 +1,6 @@
 {
   "reddit": {
-    "min_karma": 100,
+    "min_karma": 150,
     "subreddits": [
       {
         "name": "MachineLearning",
@@ -50,14 +50,7 @@
   },
   "instagram": {
     "min_likes": 10,
-    "accounts": [
-      {
-        "name": "morecorecore",
-        "schedule": {
-          "every_weekday": "Saturday"
-        }
-      }
-    ]
+    "accounts": []
   },
   "mastodon": {
     "min_favorites": 10,

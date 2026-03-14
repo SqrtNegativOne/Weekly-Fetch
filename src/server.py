@@ -24,6 +24,7 @@ Route summary:
   POST /api/remove-task            → delete Windows scheduled task
   POST /api/run-now                → trigger a fetch in a background thread
 """
+import ctypes
 import json
 import subprocess
 import sys
@@ -63,9 +64,48 @@ def _db_path() -> Path:
     return p / "digests.db"
 
 
+# Process handle for a fetch started via /api/run-now (so we can cancel it).
+_fetch_process: subprocess.Popen | None = None
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if the given PID is still a running process on Windows."""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    WAIT_TIMEOUT = 258
+    try:
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        result = ctypes.windll.kernel32.WaitForSingleObject(handle, 0)
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return result == WAIT_TIMEOUT  # WAIT_TIMEOUT means still running
+    except Exception:
+        return False
+
+
+def _fetch_is_running() -> bool:
+    """Return True if fetch_progress.json exists and its PID is still alive."""
+    pp = BASE_DIR / "fetch_progress.json"
+    if not pp.exists():
+        return False
+    try:
+        data = json.loads(pp.read_text(encoding="utf-8"))
+        pid = int(data.get("pid", 0))
+        return _pid_alive(pid)
+    except (ValueError, OSError, json.JSONDecodeError):
+        return False
+
+
 def create_app() -> FastAPI:
     """Build and return the FastAPI application instance."""
     app = FastAPI(title="Weekly Fetch", docs_url=None, redoc_url=None)
+
+    # Clean up a stale progress file left by a previously crashed fetch process.
+    pp = BASE_DIR / "fetch_progress.json"
+    if pp.exists() and not _fetch_is_running():
+        pp.unlink(missing_ok=True)
+        logger.info("Removed stale fetch_progress.json from previous session")
 
     # Serve everything in ui/ at /static/...
     app.mount("/static", StaticFiles(directory=str(_UI)), name="static")
@@ -270,16 +310,15 @@ def create_app() -> FastAPI:
     @app.get("/api/fetch-status")
     def fetch_status() -> dict:
         """Return whether a fetch is currently running, plus progress info."""
-        running = (BASE_DIR / "fetch.lock").exists()
+        progress_path = BASE_DIR / "fetch_progress.json"
+        running = _fetch_is_running()
         result: dict = {"running": running}
-        if running:
-            progress_path = BASE_DIR / "fetch_progress.json"
-            if progress_path.exists():
-                try:
-                    result["progress"] = json.loads(
-                        progress_path.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
+        if running and progress_path.exists():
+            try:
+                result["progress"] = json.loads(
+                    progress_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
         return result
 
     @app.get("/api/fetch-errors")
@@ -301,18 +340,48 @@ def create_app() -> FastAPI:
     @app.post("/api/run-now")
     def run_now() -> dict:
         """Kick off a forced fetch in a daemon thread so the API responds immediately."""
+        global _fetch_process
         logger.info("User clicked Run Now / Generate Report")
 
         def _worker():
-            if _frozen:
-                subprocess.run([sys.executable, "--fetch", "--force"],
-                               cwd=str(BASE_DIR))
-            else:
-                subprocess.run([sys.executable, str(_SRC / "main.py"), "--force"],
-                               cwd=str(BASE_DIR))
+            global _fetch_process
+            cmd = ([sys.executable, "--fetch", "--force"] if _frozen
+                   else [sys.executable, str(_SRC / "main.py"), "--force"])
+            _fetch_process = subprocess.Popen(cmd, cwd=str(BASE_DIR))
+            _fetch_process.wait()
+            _fetch_process = None
 
         threading.Thread(target=_worker, daemon=True).start()
         return {"ok": True, "msg": "Fetch started — check back in a minute."}
+
+    @app.post("/api/cancel-fetch")
+    def cancel_fetch() -> dict:
+        """Terminate a running fetch and clean up its lock/progress files."""
+        global _fetch_process
+        killed = False
+
+        # If this server started the fetch, we have a direct handle.
+        if _fetch_process and _fetch_process.poll() is None:
+            _fetch_process.terminate()
+            _fetch_process = None
+            killed = True
+
+        # Fall back to PID in fetch_progress.json (e.g. Task Scheduler fetch).
+        if not killed:
+            pp = BASE_DIR / "fetch_progress.json"
+            if pp.exists():
+                try:
+                    data = json.loads(pp.read_text(encoding="utf-8"))
+                    pid = int(data.get("pid", 0))
+                    ctypes.windll.kernel32.TerminateProcess(
+                        ctypes.windll.kernel32.OpenProcess(1, False, pid), 1)
+                    killed = True
+                except (ValueError, OSError, json.JSONDecodeError):
+                    pass
+
+        (BASE_DIR / "fetch_progress.json").unlink(missing_ok=True)
+        logger.info("Fetch cancelled (killed={})", killed)
+        return {"ok": True}
 
     # ── Usage tracking ───────────────────────────────────────────────────
     @app.post("/api/usage/session")

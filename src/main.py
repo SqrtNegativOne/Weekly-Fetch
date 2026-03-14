@@ -7,6 +7,7 @@ This script is what Windows Task Scheduler fires on a schedule.
 It fetches posts, saves to SQLite as pending artifacts, and shows a toast notification.
 """
 import json
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -43,6 +44,7 @@ def _write_progress(total: int, done: int,
                     sources_status: list[dict]) -> None:
     """Write current fetch progress so the GUI can display it."""
     _PROGRESS_PATH.write_text(json.dumps({
+        "pid": os.getpid(),
         "total": total,
         "done": done,
         "sources": sources_status,
@@ -80,9 +82,8 @@ def main(force: bool = False):
     state   = load_state()
     sources = load_sources()
 
-    # Write a lock file so the GUI can show a "generating" indicator.
-    lock_path = BASE_DIR / "fetch.lock"
-    lock_path.touch(exist_ok=True)
+    # Write an initial progress entry immediately so the GUI shows the panel.
+    _write_progress(0, 0, [])
 
     if force:
         due = list(sources)             # fetch everything
@@ -210,7 +211,6 @@ def main(force: bool = False):
     finally:
         _flush_errors(errors)
         _PROGRESS_PATH.unlink(missing_ok=True)
-        lock_path.unlink(missing_ok=True)
         logger.info("Fetch complete ({} error(s))", len(errors))
 
 

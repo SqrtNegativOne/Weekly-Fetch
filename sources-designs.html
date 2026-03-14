@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sources — Weekly Fetch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep:      oklch(8.5% 0.020 285);
+  --bg-entry-odd: oklch(100% 0 0 / 0.03);
+  --bg-entry-evn: oklch(100% 0 0 / 0.055);
+  --text-1: oklch(97% 0.012 285 / 0.93);
+  --text-2: oklch(97% 0.012 285 / 0.60);
+  --text-3: oklch(97% 0.012 285 / 0.38);
+  --text-4: oklch(97% 0.012 285 / 0.18);
+  --accent:         oklch(62% 0.210 285);
+  --accent-light:   oklch(74% 0.170 285);
+  --accent-surface: oklch(62% 0.210 285 / 0.12);
+  --accent-border:  oklch(62% 0.210 285 / 0.30);
+  --reddit:    oklch(59% 0.222 31);
+  --bluesky:   oklch(62% 0.183 257);
+  --tumblr:    oklch(52% 0.089 263);
+  --instagram: oklch(55% 0.196 359);
+  --mastodon:  oklch(56% 0.214 279);
+  --twitter:   oklch(68% 0.122 251);
+  --border:       oklch(100% 0 0 / 0.08);
+  --border-light: oklch(100% 0 0 / 0.13);
+  --error-text: oklch(72% 0.144 25);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --dur: 0.14s;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding-bottom: 80px;
+}
+input, select, button { font-family: inherit; font-size: 0.9rem; color: inherit; }
+
+/* ── Review bar ───────────────────────────── */
+.review-bar {
+  position: sticky; top: 0; z-index: 100;
+  background: oklch(4.5% 0.030 285 / 0.97);
+  border-bottom: 1px solid var(--border-light);
+  padding: 11px 32px;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-2); backdrop-filter: blur(12px);
+}
+
+/* ── Page ─────────────────────────────────── */
+.page { max-width: 680px; margin: 0 auto; padding: 40px 28px 16px; }
+.page-header { font-size: 1.5rem; font-weight: 800; margin-bottom: 32px; }
+
+/* ── Platform section ─────────────────────── */
+.plat { margin-bottom: 36px; }
+
+.plat[data-p="reddit"]    { --plat: var(--reddit); }
+.plat[data-p="bluesky"]   { --plat: var(--bluesky); }
+.plat[data-p="tumblr"]    { --plat: var(--tumblr); }
+.plat[data-p="instagram"] { --plat: var(--instagram); }
+.plat[data-p="mastodon"]  { --plat: var(--mastodon); }
+.plat[data-p="twitter"]   { --plat: var(--twitter); }
+
+/* ── Platform header ──────────────────────── */
+.plat-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Toggle + name grouped tightly, both trigger collapse */
+.plat-label {
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer; flex-shrink: 0;
+}
+.plat-name {
+  font-size: 0.7rem; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  white-space: nowrap; color: var(--plat);
+  user-select: none;
+}
+.plat-toggle {
+  background: transparent; border: none;
+  color: var(--text-3); cursor: pointer;
+  font-size: 1.35rem; padding: 0; line-height: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color var(--dur), transform var(--dur);
+  transform: rotate(0deg); flex-shrink: 0;
+}
+.plat-label:hover .plat-toggle,
+.plat-label:hover .plat-name { opacity: 0.75; }
+.plat.collapsed .plat-toggle { transform: rotate(-90deg); }
+
+.plat-rule { flex: 1; height: 1px; background: var(--border); }
+.plat-default {
+  color: var(--text-4); white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.8rem;
+}
+.plat-default-input {
+  width: 44px; background: transparent; border: none;
+  border-bottom: 1px solid var(--border); padding: 1px 4px;
+  font-family: var(--font-mono); color: var(--text-2);
+  font-size: 0.8rem;
+  text-align: center; outline: none;
+  transition: border-color var(--dur);
+}
+.plat-default-input:focus { border-bottom-color: var(--accent); }
+
+/* ── Collapse behaviour ───────────────────── */
+/* grid-template-rows trick: animating from 1fr→0fr collapses smoothly.
+   The inner div has overflow:hidden so content clips cleanly. */
+.plat-collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.plat-collapsible-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.plat.collapsed .plat-collapsible {
+  grid-template-rows: 0fr;
+}
+
+/* ── Entries list ─────────────────────────── */
+.entries {
+  display: flex; flex-direction: column; gap: 12px;
+  margin: 0 4px 0 16px;
+}
+
+.entry {
+  border-left: 3px solid color-mix(in oklch, var(--plat) 35%, transparent);
+  padding: 10px 14px 10px 14px;
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-radius: 0 6px 6px 0;
+}
+.entry:nth-child(odd)  { background: var(--bg-entry-odd); }
+.entry:nth-child(even) { background: var(--bg-entry-evn); }
+
+/* ── Name row ─────────────────────────────── */
+.name-row { display: flex; align-items: center; }
+.source-prefix {
+  font-family: var(--font-mono); font-weight: 600;
+  color: var(--text-3); flex-shrink: 0; line-height: 1;
+}
+.source-name {
+  flex: 1; min-width: 0;
+  background: transparent; border: none;
+  border-bottom: 1px solid transparent;
+  font-family: var(--font-mono); font-weight: 600;
+  color: var(--text-1);
+  padding: 0 0 0 1px; outline: none;
+  transition: border-color var(--dur);
+}
+.source-name:focus { border-bottom-color: var(--accent); }
+.source-name::placeholder { color: var(--text-4); font-weight: 400; }
+.source-remove {
+  margin-left: auto; flex-shrink: 0;
+  background: transparent; border: none;
+  color: var(--text-4); font-size: 1.1rem;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+  transition: color var(--dur);
+}
+.source-remove:hover { color: var(--error-text); }
+
+/* ── Schedule row ─────────────────────────── */
+.sched-row {
+  display: flex; align-items: center;
+  flex-wrap: wrap; gap: 7px;
+  margin-top: 8px;
+}
+.sched-left  { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.sched-right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.word { color: var(--text-3); white-space: nowrap; user-select: none; }
+.gte  { font-family: var(--font-mono); color: var(--text-3); }
+
+.ul-select {
+  background: transparent; border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2); padding: 0 2px;
+  cursor: pointer; outline: none;
+  line-height: inherit;
+  transition: border-color var(--dur);
+}
+.ul-select:focus { border-bottom-color: var(--accent); }
+.ul-select option { background: oklch(13% 0.045 285); }
+
+/* The key fix for vertical alignment: no vertical padding on inputs,
+   let line-height alone control height so they sit on the same baseline */
+.ul-input {
+  background: transparent; border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); color: var(--text-1);
+  padding: 0 3px; outline: none; text-align: center;
+  line-height: inherit;
+  transition: border-color var(--dur);
+}
+.ul-input:focus { border-bottom-color: var(--accent); }
+
+.n-input        { width: 38px; }
+.thresh-input   { width: 48px; }
+.monthday-input { width: 38px; }
+
+/* ── Day pill toggles ─────────────────────── */
+.day-pills { display: flex; gap: 4px; align-items: center; }
+.day-pill {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: transparent; color: var(--text-3);
+  font-size: 0.72rem; font-weight: 700; font-family: var(--font-sans);
+  cursor: pointer; line-height: 0; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur), color var(--dur), border-color var(--dur);
+}
+.day-pill.active { background: var(--plat); border-color: var(--plat); color: white; }
+.day-pill:not(.active):hover { border-color: var(--text-3); color: var(--text-2); }
+
+/* ── Add button ───────────────────────────── */
+.add-btn {
+  display: block; width: 100%; margin-top: 20px;
+  background: none; border: none; padding: 8px 0;
+  font-family: var(--font-mono); font-size: 0.9rem;
+  color: var(--text-3); cursor: pointer; text-align: center;
+  transition: color var(--dur);
+}
+.add-btn:hover { color: var(--accent-light); }
+
+/* ── Save ─────────────────────────────────── */
+.save-row { margin-top: 24px; }
+.btn-save {
+  background: var(--accent); color: white;
+  border: none; border-radius: 6px;
+  padding: 10px 24px; font-weight: 600;
+  cursor: pointer; transition: background var(--dur);
+}
+.btn-save:hover { background: oklch(51% 0.20 268); }
+</style>
+</head>
+<body>
+
+<div class="review-bar">Weekly Fetch — Sources Redesign</div>
+
+<div class="page">
+  <div class="page-header">Sources</div>
+
+  <!-- ── REDDIT ─────────────────────────────────────── -->
+  <div class="plat" data-p="reddit">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Reddit</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="100"> karma</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries">
+
+        <!-- every 7 days -->
+        <div class="entry">
+          <div class="name-row">
+            <span class="source-prefix">r/</span>
+            <input type="text" class="source-name" value="programming" placeholder="subreddit">
+            <button class="source-remove">×</button>
+          </div>
+          <div class="sched-row">
+            <div class="sched-left">
+              <span class="word">every</span>
+              <input type="number" class="ul-input n-input" value="7">
+              <select class="ul-select unit-sel" onchange="toggleUnit(this)">
+                <option value="days" selected>day(s)</option>
+                <option value="weeks">week(s)</option>
+                <option value="months">month(s)</option>
+              </select>
+              <span class="word on-weeks" style="display:none">on</span>
+              <div class="day-pills on-weeks" style="display:none">
+                <button type="button" class="day-pill" onclick="toggleDay(this)">M</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">W</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">F</button>
+                <button type="button" class="day-pill active" onclick="toggleDay(this)">S</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">S</button>
+              </div>
+              <span class="word on-months" style="display:none">on day</span>
+              <input type="number" class="ul-input monthday-input on-months" value="1" style="display:none">
+            </div>
+            <div class="sched-right">
+              <span class="gte">≥</span>
+              <input type="number" class="ul-input thresh-input" value="250">
+              <span class="word">karma</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- every 2 weeks on S -->
+        <div class="entry">
+          <div class="name-row">
+            <span class="source-prefix">r/</span>
+            <input type="text" class="source-name" value="MachineLearning" placeholder="subreddit">
+            <button class="source-remove">×</button>
+          </div>
+          <div class="sched-row">
+            <div class="sched-left">
+              <span class="word">every</span>
+              <input type="number" class="ul-input n-input" value="2">
+              <select class="ul-select unit-sel" onchange="toggleUnit(this)">
+                <option value="days">day(s)</option>
+                <option value="weeks" selected>week(s)</option>
+                <option value="months">month(s)</option>
+              </select>
+              <span class="word on-weeks">on</span>
+              <div class="day-pills on-weeks">
+                <button type="button" class="day-pill" onclick="toggleDay(this)">M</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">W</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">F</button>
+                <button type="button" class="day-pill active" onclick="toggleDay(this)">S</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">S</button>
+              </div>
+              <span class="word on-months" style="display:none">on day</span>
+              <input type="number" class="ul-input monthday-input on-months" value="1" style="display:none">
+            </div>
+            <div class="sched-right">
+              <span class="gte">≥</span>
+              <input type="number" class="ul-input thresh-input" value="100">
+              <span class="word">karma</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- every 1 month on day 1 -->
+        <div class="entry">
+          <div class="name-row">
+            <span class="source-prefix">r/</span>
+            <input type="text" class="source-name" value="todayilearned" placeholder="subreddit">
+            <button class="source-remove">×</button>
+          </div>
+          <div class="sched-row">
+            <div class="sched-left">
+              <span class="word">every</span>
+              <input type="number" class="ul-input n-input" value="1">
+              <select class="ul-select unit-sel" onchange="toggleUnit(this)">
+                <option value="days">day(s)</option>
+                <option value="weeks">week(s)</option>
+                <option value="months" selected>month(s)</option>
+              </select>
+              <span class="word on-weeks" style="display:none">on</span>
+              <div class="day-pills on-weeks" style="display:none">
+                <button type="button" class="day-pill" onclick="toggleDay(this)">M</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">W</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">F</button>
+                <button type="button" class="day-pill active" onclick="toggleDay(this)">S</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">S</button>
+              </div>
+              <span class="word on-months">on day</span>
+              <input type="number" class="ul-input monthday-input on-months" value="1">
+            </div>
+            <div class="sched-right">
+              <span class="gte">≥</span>
+              <input type="number" class="ul-input thresh-input" value="500">
+              <span class="word">karma</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <button class="add-btn">+ add subreddit +</button>
+    </div></div>
+  </div>
+
+  <!-- ── BLUESKY ─────────────────────────────────────── -->
+  <div class="plat" data-p="bluesky">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Bluesky</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="50"> likes</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries">
+        <div class="entry">
+          <div class="name-row">
+            <span class="source-prefix">@</span>
+            <input type="text" class="source-name" value="pfrazee.com" placeholder="handle">
+            <button class="source-remove">×</button>
+          </div>
+          <div class="sched-row">
+            <div class="sched-left">
+              <span class="word">every</span>
+              <input type="number" class="ul-input n-input" value="1">
+              <select class="ul-select unit-sel" onchange="toggleUnit(this)">
+                <option value="days">day(s)</option>
+                <option value="weeks" selected>week(s)</option>
+                <option value="months">month(s)</option>
+              </select>
+              <span class="word on-weeks">on</span>
+              <div class="day-pills on-weeks">
+                <button type="button" class="day-pill" onclick="toggleDay(this)">M</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill active" onclick="toggleDay(this)">W</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">T</button>
+                <button type="button" class="day-pill active" onclick="toggleDay(this)">F</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">S</button>
+                <button type="button" class="day-pill" onclick="toggleDay(this)">S</button>
+              </div>
+              <span class="word on-months" style="display:none">on day</span>
+              <input type="number" class="ul-input monthday-input on-months" value="1" style="display:none">
+            </div>
+            <div class="sched-right">
+              <span class="gte">≥</span>
+              <input type="number" class="ul-input thresh-input" value="50">
+              <span class="word">likes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="add-btn">+ add account +</button>
+    </div></div>
+  </div>
+
+  <!-- ── TUMBLR ─────────────────────────────────────── -->
+  <div class="plat" data-p="tumblr">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Tumblr</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="5"> notes</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries"></div>
+      <button class="add-btn">+ add blog +</button>
+    </div></div>
+  </div>
+
+  <!-- ── INSTAGRAM ─────────────────────────────────── -->
+  <div class="plat" data-p="instagram">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Instagram</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="100"> likes</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries"></div>
+      <button class="add-btn">+ add account +</button>
+    </div></div>
+  </div>
+
+  <!-- ── MASTODON ───────────────────────────────────── -->
+  <div class="plat" data-p="mastodon">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Mastodon</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="10"> favorites</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries"></div>
+      <button class="add-btn">+ add account +</button>
+    </div></div>
+  </div>
+
+  <!-- ── TWITTER / X ───────────────────────────────── -->
+  <div class="plat" data-p="twitter">
+    <div class="plat-header">
+      <span class="plat-label" onclick="togglePlat(this)">
+        <button type="button" class="plat-toggle">▾</button>
+        <span class="plat-name">Twitter / X</span>
+      </span>
+      <span class="plat-rule"></span>
+      <span class="plat-default">default <input type="number" class="plat-default-input" value="50"> likes</span>
+    </div>
+    <div class="plat-collapsible"><div class="plat-collapsible-inner">
+      <div class="entries"></div>
+      <button class="add-btn">+ add account +</button>
+    </div></div>
+  </div>
+
+  <div class="save-row">
+    <button class="btn-save">Save Sources</button>
+  </div>
+</div>
+
+<script>
+function toggleDay(btn) {
+  btn.classList.toggle('active');
+}
+
+function toggleUnit(sel) {
+  var left   = sel.closest('.sched-left');
+  var weeks  = left.querySelectorAll('.on-weeks');
+  var months = left.querySelectorAll('.on-months');
+  weeks.forEach(function(el)  { el.style.display = 'none'; });
+  months.forEach(function(el) { el.style.display = 'none'; });
+  if (sel.value === 'weeks') {
+    weeks.forEach(function(el)  { el.style.display = ''; });
+  } else if (sel.value === 'months') {
+    months.forEach(function(el) { el.style.display = ''; });
+  }
+}
+
+function togglePlat(el) {
+  el.closest('.plat').classList.toggle('collapsed');
+}
+</script>
+</body>
+</html>

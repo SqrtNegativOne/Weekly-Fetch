@@ -1,4 +1,5 @@
 import html as html_mod
+import time
 from datetime import datetime, timezone
 
 from config import POST_LIMIT
@@ -35,58 +36,76 @@ class InstagramFetcher(BaseFetcher):
             progress.set_description(f"@{username}: Instagram")
 
         try:
-            loader  = instaloader.Instaloader()
+            loader  = instaloader.Instaloader(max_connection_attempts=1)
             profile = instaloader.Profile.from_username(loader.context, username)
             cutoff  = self.compute_cutoff(since)
             posts   = []
 
             for post in profile.get_posts():
-                # Instagram returns posts newest-first, so the first post older
-                # than our cutoff means we can stop iterating.
-                post_dt = post.date_utc
-                if post_dt.tzinfo is None:
-                    post_dt = post_dt.replace(tzinfo=timezone.utc)
-                if post_dt < cutoff:
-                    break
+                try:
+                    # Instagram returns posts newest-first, so the first post older
+                    # than our cutoff means we can stop iterating.
+                    post_dt = post.date_utc
+                    if post_dt.tzinfo is None:
+                        post_dt = post_dt.replace(tzinfo=timezone.utc)
+                    if post_dt < cutoff:
+                        break
 
-                if post.likes < min_likes:
-                    continue
+                    if post.likes < min_likes:
+                        continue
 
-                # ── Title (caption) ───────────────────────────────────────────
-                caption   = post.caption or ""
-                title_raw = caption[:120] + ("…" if len(caption) > 120 else "")
-                if not title_raw:
-                    title_raw = "[Video]" if post.is_video else "[Image]"
-                title = html_mod.escape(title_raw)
+                    # ── Title (caption) ───────────────────────────────────────────
+                    caption   = post.caption or ""
+                    title_raw = caption[:120] + ("…" if len(caption) > 120 else "")
+                    if not title_raw:
+                        title_raw = "[Video]" if post.is_video else "[Image]"
+                    title = html_mod.escape(title_raw)
 
-                link = f"https://www.instagram.com/p/{post.shortcode}/"
+                    link = f"https://www.instagram.com/p/{post.shortcode}/"
 
-                if post.is_video:
-                    content_type = "video"
-                    content      = {"url": post.video_url or ""}
-                else:
-                    content_type = "image"
-                    content      = {"url": post.url}
+                    if post.is_video:
+                        content_type = "video"
+                        content      = {"url": post.video_url or ""}
+                    else:
+                        content_type = "image"
+                        content      = {"url": post.url}
 
-                # Include full caption as body text
-                if caption:
-                    content["text"] = caption
+                    # Include full caption as body text
+                    if caption:
+                        content["text"] = caption
 
-                posts.append(self.make_post(
-                    title=title,
-                    link=link,
-                    score=post.likes,
-                    content_type=content_type,
-                    content=content,
-                    author="@" + username,
-                ))
+                    posts.append(self.make_post(
+                        title=title,
+                        link=link,
+                        score=post.likes,
+                        content_type=content_type,
+                        content=content,
+                        author="@" + username,
+                    ))
 
-                if progress is not None:
-                    progress.update(1)
+                    if progress is not None:
+                        progress.update(1)
 
-                if len(posts) >= POST_LIMIT:
-                    break
+                    if len(posts) >= POST_LIMIT:
+                        break
 
+                    time.sleep(0.7)  # avoid triggering Instagram's rate limit
+
+                except instaloader.exceptions.TooManyRequestsException:
+                    logger.warning(
+                        "[instagram] Rate-limited by Instagram while fetching @{} "
+                        "— stopping early, returning {} posts collected so far.",
+                        username, len(posts),
+                    )
+                    return posts
+
+        except instaloader.exceptions.TooManyRequestsException:
+            logger.warning(
+                "[instagram] Rate-limited by Instagram on profile load for @{} "
+                "— skipping.",
+                username,
+            )
+            return []
         except Exception as exc:
             logger.error("[instagram] Error fetching @{}: {}", username, exc)
             return []

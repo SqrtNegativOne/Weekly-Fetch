@@ -918,6 +918,27 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
+  // Cancel fetch button
+  var cancelFetchBtn = document.getElementById('btn-cancel-fetch');
+  if (cancelFetchBtn) {
+    cancelFetchBtn.onclick = async function () {
+      cancelFetchBtn.disabled = true;
+      cancelFetchBtn.textContent = 'Stopping\u2026';
+      try {
+        await api('POST', '/api/cancel-fetch');
+        _fetchRunning = false;
+        var fetchingEl = document.getElementById('home-fetching');
+        if (fetchingEl) fetchingEl.style.display = 'none';
+        loadPending();
+      } catch (e) {
+        showToast('Could not stop fetch: ' + e.message, 'error');
+      } finally {
+        cancelFetchBtn.disabled = false;
+        cancelFetchBtn.textContent = 'Stop';
+      }
+    };
+  }
+
   // Archive page: search input with debounce
   var archiveSearchEl = document.getElementById('archive-search');
   var archiveFilterEl = document.getElementById('archive-platform-filter');
