@@ -1,14 +1,20 @@
 import html
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 import requests
 
 from config import HEADERS, MIN_KARMA, POST_LIMIT
 from fetch.base import BaseFetcher, register
+from log import logger
 
 
 # ── Module-level helpers (used internally by RedditFetcher) ───────────────────
+
+# How many comment-fetch threads to run in parallel per subreddit.
+# Keeps us under Reddit's rate limits while still being ~4x faster.
+_COMMENT_WORKERS = 4
 
 def parse_comment(child: dict, depth_remaining: int) -> dict | None:
     """Recursively parse a single Reddit comment child dict.
@@ -68,6 +74,17 @@ def fetch_comments(subreddit: str, post_id: str) -> list[dict]:
     return comments
 
 
+def _fetch_comments_with_delay(subreddit: str, post_id: str) -> list[dict]:
+    """Fetch comments for one post with a polite delay.
+
+    Each thread sleeps 1 second before its request.  With _COMMENT_WORKERS
+    threads, this staggers requests to ~_COMMENT_WORKERS per second — fast
+    enough to be a big improvement, polite enough to avoid Reddit rate-limits.
+    """
+    time.sleep(1)
+    return fetch_comments(subreddit, post_id)
+
+
 # ── Fetcher class ─────────────────────────────────────────────────────────────
 
 @register
@@ -77,6 +94,9 @@ class RedditFetcher(BaseFetcher):
     Reddit requires (POST_LIMIT + 1) progress steps per source:
       1 step  — the top-posts listing request
       N steps — one per post, to fetch its comments
+
+    Comment fetching is parallelised with a small thread pool (_COMMENT_WORKERS
+    threads) so it completes ~4x faster than the old sequential approach.
     """
 
     platform       = "reddit"
@@ -119,7 +139,11 @@ class RedditFetcher(BaseFetcher):
         if progress is not None:
             progress.update(1)
 
-        posts = []
+        # ── Phase 1: Build post data (no network I/O) ─────────────────────
+        # Collect qualifying posts and their IDs so we can batch-fetch
+        # comments in parallel in phase 2.
+        post_data: list[dict] = []   # each entry has post fields + "post_id"
+
         for child in data["data"]["children"]:
             post = child["data"]
             if post.get("score", 0) < min_karma:
@@ -185,30 +209,56 @@ class RedditFetcher(BaseFetcher):
             if not is_self and selftext:
                 content["text"] = selftext
 
-            post_id  = post.get("id", "")
-            post_num = len(posts) + 1
-            if progress is not None:
-                progress.set_description(f"r/{subreddit}: post {post_num}/{POST_LIMIT} comments")
-            try:
-                time.sleep(1)
-                comments = fetch_comments(subreddit, post_id)
-            except Exception:
-                comments = []
+            post_data.append({
+                "post_id":      post.get("id", ""),
+                "title":        title,
+                "link":         link,
+                "score":        score,
+                "content_type": content_type,
+                "content":      content,
+            })
 
-            if progress is not None:
-                progress.update(1)
-
-            posts.append(self.make_post(
-                title=title,
-                link=link,
-                score=score,
-                content_type=content_type,
-                content=content,
-                author="",
-                comments=comments,
-            ))
-
-            if len(posts) >= POST_LIMIT:
+            if len(post_data) >= POST_LIMIT:
                 break
+
+        # ── Phase 2: Fetch comments in parallel ──────────────────────────
+        # Use a small thread pool so multiple comment pages load at once.
+        # Each worker sleeps 1s before its request (see _fetch_comments_with_delay)
+        # so with 4 workers we make ~4 req/s — respectful enough for Reddit's
+        # public API and ~4x faster than the old sequential loop.
+        comment_map: dict[str, list[dict]] = {}  # post_id → comments
+
+        if progress is not None:
+            progress.set_description(f"r/{subreddit}: fetching comments ({len(post_data)} posts)")
+
+        with ThreadPoolExecutor(max_workers=_COMMENT_WORKERS) as pool:
+            futures = {
+                pool.submit(_fetch_comments_with_delay, subreddit, pd["post_id"]): pd["post_id"]
+                for pd in post_data
+            }
+
+            for future in as_completed(futures):
+                pid = futures[future]
+                try:
+                    comment_map[pid] = future.result()
+                except Exception:
+                    logger.debug("r/{}: failed to fetch comments for post {}", subreddit, pid)
+                    comment_map[pid] = []
+
+                if progress is not None:
+                    progress.update(1)
+
+        # ── Phase 3: Assemble final post list (preserves original order) ──
+        posts = []
+        for pd in post_data:
+            posts.append(self.make_post(
+                title=pd["title"],
+                link=pd["link"],
+                score=pd["score"],
+                content_type=pd["content_type"],
+                content=pd["content"],
+                author="",
+                comments=comment_map.get(pd["post_id"], []),
+            ))
 
         return posts

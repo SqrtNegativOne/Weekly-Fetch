@@ -443,12 +443,12 @@ async function loadUsage() {
 // ── Sources (was: Accounts) ───────────────────────────────────────────────────
 
 var PLATFORM_CONFIG = {
-  reddit:    { listKey: 'subreddits', thresholdKey: 'karma',    globalKey: 'min_karma', namePlaceholder: 'MachineLearning' },
-  bluesky:   { listKey: 'accounts',   thresholdKey: 'min_likes', globalKey: 'min_likes', namePlaceholder: 'jay.bsky.social' },
-  tumblr:    { listKey: 'blogs',      thresholdKey: 'min_notes', globalKey: 'min_notes', namePlaceholder: 'staff' },
-  instagram: { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'natgeo' },
-  mastodon:  { listKey: 'accounts',   thresholdKey: 'min_favorites', globalKey: 'min_favorites', namePlaceholder: 'username@mastodon.social' },
-  twitter:   { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'elonmusk' },
+  reddit:    { listKey: 'subreddits', thresholdKey: 'karma',         globalKey: 'min_karma',     namePlaceholder: 'MachineLearning',      prefix: 'r/', thresholdLabel: 'karma' },
+  bluesky:   { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'jay.bsky.social',      prefix: '',   thresholdLabel: 'likes' },
+  tumblr:    { listKey: 'blogs',      thresholdKey: 'min_notes',     globalKey: 'min_notes',     namePlaceholder: 'staff',                prefix: '',   thresholdLabel: 'notes' },
+  instagram: { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'natgeo',               prefix: '@',  thresholdLabel: 'likes' },
+  mastodon:  { listKey: 'accounts',   thresholdKey: 'min_favorites', globalKey: 'min_favorites', namePlaceholder: 'username@mastodon.social', prefix: '', thresholdLabel: 'favorites' },
+  twitter:   { listKey: 'accounts',   thresholdKey: 'min_likes',     globalKey: 'min_likes',     namePlaceholder: 'elonmusk',             prefix: '@',  thresholdLabel: 'likes' },
 };
 
 /**
@@ -517,13 +517,6 @@ function scheduleToDisplay(sched) {
   return { type: 'weekday', weekday: 'Saturday', n: 7, day: 1 };
 }
 
-function displayToSchedule(type, weekday, n, day) {
-  if (type === 'weekday')  return { every_weekday: weekday };
-  if (type === 'ndays')    return { every_n_days: Math.max(1, parseInt(n) || 1) };
-  if (type === 'monthday') return { day_n_of_month: Math.max(1, Math.min(31, parseInt(day) || 1)) };
-  return { every_weekday: 'Saturday' };
-}
-
 function createEntryRow(platform, entry) {
   var name = typeof entry === 'string' ? entry : (entry.name || '');
   var sched = typeof entry === 'object' ? entry.schedule : null;
@@ -537,21 +530,29 @@ function createEntryRow(platform, entry) {
   var ds = scheduleToDisplay(sched);
 
   var row = document.createElement('div');
-  row.className = 'entry-row';
+  row.className = 'source-entry';
 
-  var topLine = document.createElement('div');
-  topLine.className = 'entry-row-top';
+  // Line 1: [prefix][name]                    [×]
+  var line1 = document.createElement('div');
+  line1.className = 'source-line source-line-name';
+
+  if (cfg.prefix) {
+    var prefixSpan = document.createElement('span');
+    prefixSpan.className = 'source-word source-prefix';
+    prefixSpan.textContent = cfg.prefix;
+    line1.appendChild(prefixSpan);
+  }
 
   var nameInput = document.createElement('input');
   nameInput.type = 'text';
-  nameInput.className = 'entry-name';
+  nameInput.className = 'source-input source-name';
   nameInput.placeholder = cfg.namePlaceholder;
   nameInput.value = name;
 
   // Auto-convert pasted URLs to clean source IDs
   function _tryConvertUrl() {
     var result = tryParseSourceUrl(platform, nameInput.value);
-    if (result === null) return; // not a URL, leave it
+    if (result === null) return;
     if (result === '') {
       nameInput.value = '';
       showToast('Could not parse URL for ' + platform, 'error');
@@ -560,131 +561,155 @@ function createEntryRow(platform, entry) {
     }
   }
   nameInput.addEventListener('paste', function () {
-    // Defer so the pasted value is in the input
     setTimeout(_tryConvertUrl, 0);
   });
   nameInput.addEventListener('blur', _tryConvertUrl);
 
+  line1.appendChild(nameInput);
+
   var removeBtn = document.createElement('button');
   removeBtn.type = 'button';
-  removeBtn.className = 'entry-remove';
+  removeBtn.className = 'source-remove';
   removeBtn.textContent = '\u00d7';
   removeBtn.title = 'Remove';
   removeBtn.onclick = function () { row.remove(); };
+  line1.appendChild(removeBtn);
 
-  topLine.appendChild(nameInput);
-  topLine.appendChild(removeBtn);
+  // Line 2: every [N] [days|week|month]
+  var line2 = document.createElement('div');
+  line2.className = 'source-line source-line-sched';
 
-  var botLine = document.createElement('div');
-  botLine.className = 'entry-row-bot';
+  var everySpan = document.createElement('span');
+  everySpan.className = 'source-word';
+  everySpan.textContent = 'every';
+  line2.appendChild(everySpan);
 
-  var typeSelect = document.createElement('select');
-  typeSelect.className = 'entry-sched-type';
+  var nInput = document.createElement('input');
+  nInput.type = 'number';
+  nInput.className = 'source-input source-n';
+  nInput.min = '1';
+  nInput.value = ds.n || 7;
+  nInput.dataset.role = 'n';
+  line2.appendChild(nInput);
+
+  var periodSelect = document.createElement('select');
+  periodSelect.className = 'source-select source-period';
   [
-    { value: 'weekday',  label: 'Every' },
-    { value: 'ndays',    label: 'Every \u2026 days' },
-    { value: 'monthday', label: 'Day \u2026 of month' },
+    { value: 'days',  label: 'days' },
+    { value: 'week',  label: 'week' },
+    { value: 'month', label: 'month' },
   ].forEach(function (opt) {
     var o = document.createElement('option');
     o.value = opt.value;
     o.textContent = opt.label;
-    typeSelect.appendChild(o);
+    periodSelect.appendChild(o);
   });
-  typeSelect.value = ds.type;
 
-  var paramArea = document.createElement('div');
-  paramArea.className = 'entry-sched-params';
+  if (ds.type === 'ndays')        periodSelect.value = 'days';
+  else if (ds.type === 'weekday') periodSelect.value = 'week';
+  else if (ds.type === 'monthday') periodSelect.value = 'month';
 
-  function buildParams(type, weekday, n, day) {
-    paramArea.innerHTML = '';
-    if (type === 'weekday') {
-      var sel = document.createElement('select');
-      sel.className = 'entry-param-select';
-      sel.dataset.role = 'weekday';
+  line2.appendChild(periodSelect);
+
+  // Line 3: on [Saturday] / on the [1] day  (conditional)
+  var line3 = document.createElement('div');
+  line3.className = 'source-line source-line-on';
+
+  function buildOnLine(period, weekday, day) {
+    line3.innerHTML = '';
+
+    if (period === 'days') {
+      line3.style.display = 'none';
+      nInput.style.display = '';
+      return;
+    }
+
+    nInput.style.display = 'none';
+    line3.style.display = '';
+
+    var onSpan = document.createElement('span');
+    onSpan.className = 'source-word';
+    onSpan.textContent = 'on';
+    line3.appendChild(onSpan);
+
+    if (period === 'week') {
+      var weekdaySelect = document.createElement('select');
+      weekdaySelect.className = 'source-select source-weekday';
+      weekdaySelect.dataset.role = 'weekday';
       WEEKDAYS.forEach(function (d) {
         var o = document.createElement('option');
         o.value = d; o.textContent = d;
-        sel.appendChild(o);
+        weekdaySelect.appendChild(o);
       });
-      sel.value = weekday || 'Saturday';
-      paramArea.appendChild(sel);
+      weekdaySelect.value = weekday || 'Saturday';
+      line3.appendChild(weekdaySelect);
+    } else if (period === 'month') {
+      var theSpan = document.createElement('span');
+      theSpan.className = 'source-word';
+      theSpan.textContent = 'the';
+      line3.appendChild(theSpan);
 
-    } else if (type === 'ndays') {
-      var inp = document.createElement('input');
-      inp.type = 'number'; inp.min = '1'; inp.max = '365';
-      inp.className = 'entry-param-num';
-      inp.dataset.role = 'n';
-      inp.value = n || 7;
-      inp.title = 'Number of days between fetches';
-      var lbl = document.createElement('span');
-      lbl.className = 'entry-param-label';
-      lbl.textContent = 'days';
-      paramArea.appendChild(inp);
-      paramArea.appendChild(lbl);
+      var dayInput = document.createElement('input');
+      dayInput.type = 'number';
+      dayInput.className = 'source-input source-day';
+      dayInput.min = '1';
+      dayInput.max = '31';
+      dayInput.value = day || 1;
+      dayInput.dataset.role = 'day';
+      line3.appendChild(dayInput);
 
-    } else if (type === 'monthday') {
-      var inp2 = document.createElement('input');
-      inp2.type = 'number'; inp2.min = '1'; inp2.max = '31';
-      inp2.className = 'entry-param-num';
-      inp2.dataset.role = 'day';
-      inp2.value = day || 1;
-      inp2.title = 'Day of the month (1\u201331)';
-      var lbl2 = document.createElement('span');
-      lbl2.className = 'entry-param-label';
-      lbl2.textContent = 'of every month';
-      paramArea.appendChild(inp2);
-      paramArea.appendChild(lbl2);
+      var dayLabel = document.createElement('span');
+      dayLabel.className = 'source-word';
+      dayLabel.textContent = 'day';
+      line3.appendChild(dayLabel);
     }
   }
 
-  buildParams(ds.type, ds.weekday, ds.n, ds.day);
+  buildOnLine(
+    periodSelect.value,
+    ds.weekday,
+    ds.day
+  );
 
-  typeSelect.onchange = function () {
-    var cur = getSchedParams(paramArea);
-    buildParams(typeSelect.value, cur.weekday, cur.n, cur.day);
+  periodSelect.onchange = function () {
+    var curWeekday = (line3.querySelector('[data-role="weekday"]') || {}).value || ds.weekday;
+    var curDay = (line3.querySelector('[data-role="day"]') || {}).value || ds.day;
+    buildOnLine(periodSelect.value, curWeekday, curDay);
   };
 
-  var threshWrap = document.createElement('div');
-  threshWrap.className = 'entry-thresh-wrap';
-  var threshLabel = document.createElement('span');
-  threshLabel.className = 'entry-thresh-label';
-  threshLabel.textContent = cfg.thresholdKey === 'karma'         ? 'min karma' :
-                             cfg.thresholdKey === 'min_notes'     ? 'min notes' :
-                             cfg.thresholdKey === 'min_favorites' ? 'min favs' : 'min likes';
+  // Line 4: above [threshold] karma.
+  var line4 = document.createElement('div');
+  line4.className = 'source-line source-line-thresh';
+
+  var aboveSpan = document.createElement('span');
+  aboveSpan.className = 'source-word';
+  aboveSpan.textContent = 'above';
+  line4.appendChild(aboveSpan);
+
   var threshInput = document.createElement('input');
   threshInput.type = 'number';
-  threshInput.className = 'entry-threshold';
+  threshInput.className = 'source-input source-thresh';
   threshInput.placeholder = 'default';
   threshInput.min = '0';
-  threshInput.title = 'Override the global minimum for this source. Leave empty to use the global default.';
   threshInput.value = threshVal;
-  threshWrap.appendChild(threshLabel);
-  threshWrap.appendChild(threshInput);
+  line4.appendChild(threshInput);
 
-  botLine.appendChild(typeSelect);
-  botLine.appendChild(paramArea);
-  botLine.appendChild(threshWrap);
+  var threshLabelSpan = document.createElement('span');
+  threshLabelSpan.className = 'source-word';
+  threshLabelSpan.textContent = cfg.thresholdLabel + '.';
+  line4.appendChild(threshLabelSpan);
 
-  row.appendChild(topLine);
-  row.appendChild(botLine);
+  row.appendChild(line1);
+  row.appendChild(line2);
+  row.appendChild(line3);
+  row.appendChild(line4);
   return row;
-}
-
-function getSchedParams(paramArea) {
-  var weekdayEl = paramArea.querySelector('[data-role="weekday"]');
-  var nEl       = paramArea.querySelector('[data-role="n"]');
-  var dayEl     = paramArea.querySelector('[data-role="day"]');
-  return {
-    weekday: weekdayEl ? weekdayEl.value : 'Saturday',
-    n:       nEl  ? parseInt(nEl.value)  || 7 : 7,
-    day:     dayEl ? parseInt(dayEl.value) || 1 : 1,
-  };
 }
 
 window.addEntry = function (platform) {
   var container = document.getElementById(platform + '-entries');
   container.appendChild(createEntryRow(platform, ''));
-  var inputs = container.querySelectorAll('.entry-name');
+  var inputs = container.querySelectorAll('.source-name');
   inputs[inputs.length - 1].focus();
 };
 
@@ -698,21 +723,29 @@ function populateEntries(platform, entries) {
 
 function collectEntries(platform) {
   var container = document.getElementById(platform + '-entries');
-  var rows = container.querySelectorAll('.entry-row');
+  var rows = container.querySelectorAll('.source-entry');
   var cfg = PLATFORM_CONFIG[platform];
   var entries = [];
   rows.forEach(function (row) {
-    var name = row.querySelector('.entry-name').value.trim();
+    var name = row.querySelector('.source-name').value.trim();
     if (!name) return;
 
-    var type = row.querySelector('.entry-sched-type').value;
-    var params = getSchedParams(row.querySelector('.entry-sched-params'));
-    var threshVal = row.querySelector('.entry-threshold').value.trim();
+    var period = row.querySelector('.source-period').value;
+    var nEl = row.querySelector('[data-role="n"]');
+    var weekdayEl = row.querySelector('[data-role="weekday"]');
+    var dayEl = row.querySelector('[data-role="day"]');
 
-    var entry = {
-      name: name,
-      schedule: displayToSchedule(type, params.weekday, params.n, params.day),
-    };
+    var schedule;
+    if (period === 'days') {
+      schedule = { every_n_days: Math.max(1, parseInt(nEl ? nEl.value : 7) || 7) };
+    } else if (period === 'week') {
+      schedule = { every_weekday: weekdayEl ? weekdayEl.value : 'Saturday' };
+    } else if (period === 'month') {
+      schedule = { day_n_of_month: Math.max(1, Math.min(31, parseInt(dayEl ? dayEl.value : 1) || 1)) };
+    }
+
+    var threshVal = row.querySelector('.source-thresh').value.trim();
+    var entry = { name: name, schedule: schedule };
     if (threshVal !== '') {
       entry[cfg.thresholdKey] = parseInt(threshVal) || 0;
     }

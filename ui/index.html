@@ -144,101 +144,68 @@
       <div class="app-view-content">
         <div class="app-view-header">Sources</div>
 
-        <div class="form-section" data-platform="reddit">
-          <div class="form-section-title">Reddit</div>
-          <div class="form-group threshold-group">
-            <label for="reddit-min-karma">
-              Default min karma
-              <span class="label-hint">global floor — each subreddit can override this</span>
-            </label>
-            <input type="number" id="reddit-min-karma" value="100" min="0" class="threshold-global">
+        <div class="source-section" data-platform="reddit">
+          <div class="source-header">
+            <span class="source-header-name">REDDIT</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="reddit-min-karma" value="100" min="0" class="source-default-input"> karma</span>
           </div>
-          <div class="form-group">
-            <div id="reddit-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('reddit')">+ Add subreddit</button>
-          </div>
+          <div id="reddit-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('reddit')">+ add subreddit +</button>
         </div>
 
-        <div class="form-section" data-platform="bluesky">
-          <div class="form-section-title">Bluesky</div>
-          <div class="form-group threshold-group">
-            <label for="bluesky-min-likes">
-              Default min likes
-              <span class="label-hint">global floor — each account can override this</span>
-            </label>
-            <input type="number" id="bluesky-min-likes" value="10" min="0" class="threshold-global">
+        <div class="source-section" data-platform="bluesky">
+          <div class="source-header">
+            <span class="source-header-name">BLUESKY</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="bluesky-min-likes" value="10" min="0" class="source-default-input"> likes</span>
           </div>
-          <div class="form-group">
-            <div id="bluesky-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('bluesky')">+ Add account</button>
-          </div>
+          <div id="bluesky-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('bluesky')">+ add account +</button>
         </div>
 
-        <div class="form-section" data-platform="tumblr">
-          <div class="form-section-title">Tumblr</div>
-          <div class="form-group threshold-group">
-            <label for="tumblr-min-notes">
-              Default min notes
-              <span class="label-hint">global floor — each blog can override this</span>
-            </label>
-            <input type="number" id="tumblr-min-notes" value="5" min="0" class="threshold-global">
+        <div class="source-section" data-platform="tumblr">
+          <div class="source-header">
+            <span class="source-header-name">TUMBLR</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="tumblr-min-notes" value="5" min="0" class="source-default-input"> notes</span>
           </div>
-          <div class="form-group">
-            <div id="tumblr-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('tumblr')">+ Add blog</button>
-          </div>
+          <div id="tumblr-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('tumblr')">+ add blog +</button>
         </div>
 
-        <div class="form-section" data-platform="instagram">
-          <div class="form-section-title">Instagram</div>
-          <div class="form-group threshold-group">
-            <label for="instagram-min-likes">
-              Default min likes
-              <span class="label-hint">global floor — each account can override this</span>
-            </label>
-            <input type="number" id="instagram-min-likes" value="100" min="0" class="threshold-global">
+        <div class="source-section" data-platform="instagram">
+          <div class="source-header">
+            <span class="source-header-name">INSTAGRAM</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="instagram-min-likes" value="100" min="0" class="source-default-input"> likes</span>
           </div>
-          <div class="form-group">
-            <div id="instagram-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('instagram')">+ Add account</button>
-          </div>
+          <div id="instagram-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('instagram')">+ add account +</button>
         </div>
 
-        <div class="form-section" data-platform="mastodon">
-          <div class="form-section-title">Mastodon</div>
-          <div class="form-group threshold-group">
-            <label for="mastodon-min-favorites">
-              Default min favorites
-              <span class="label-hint">global floor — each account can override this</span>
-            </label>
-            <input type="number" id="mastodon-min-favorites" value="10" min="0" class="threshold-global">
+        <div class="source-section" data-platform="mastodon">
+          <div class="source-header">
+            <span class="source-header-name">MASTODON</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="mastodon-min-favorites" value="10" min="0" class="source-default-input"> favorites</span>
           </div>
-          <div class="form-group">
-            <div id="mastodon-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('mastodon')">+ Add account</button>
-          </div>
+          <div id="mastodon-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('mastodon')">+ add account +</button>
         </div>
 
-        <div class="form-section" data-platform="twitter">
-          <div class="form-section-title">Twitter / X</div>
-          <div class="form-group">
-            <label for="twitter-rss-base">
-              RSS base URL
-              <span class="label-hint">base URL of a Nitter instance — the app appends /{handle}/rss automatically</span>
-            </label>
-            <input type="text" id="twitter-rss-base" placeholder="https://nitter.privacydev.net">
+        <div class="source-section" data-platform="twitter">
+          <div class="source-header">
+            <span class="source-header-name">TWITTER / X</span>
+            <span class="source-header-rule"></span>
+            <span class="source-header-default">default <input type="number" id="twitter-min-likes" value="50" min="0" class="source-default-input"> likes</span>
           </div>
-          <div class="form-group threshold-group">
-            <label for="twitter-min-likes">
-              Default min likes
-              <span class="label-hint">accepted for consistency, but RSS feeds can't enforce this</span>
-            </label>
-            <input type="number" id="twitter-min-likes" value="50" min="0" class="threshold-global">
+          <div class="source-extra">
+            <span class="source-word">rss base</span>
+            <input type="text" id="twitter-rss-base" placeholder="https://nitter.privacydev.net" class="source-input source-rss-base">
           </div>
-          <div class="form-group">
-            <div id="twitter-entries" class="entry-list"></div>
-            <button type="button" class="btn btn-add" onclick="addEntry('twitter')">+ Add account</button>
-          </div>
+          <div id="twitter-entries" class="source-entries"></div>
+          <button type="button" class="source-add" onclick="addEntry('twitter')">+ add account +</button>
         </div>
 
         <div class="form-actions">
