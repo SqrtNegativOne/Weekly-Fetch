@@ -468,8 +468,7 @@ window.initDigestViewer = function (data) {
         var item = dataArr.find(function (x) { return x.artifact_id === artifactId; });
         if (item) {
           var text = itemType === 'note' ? (item.note_text || '') : (item.todo_text || '');
-          var clipText = '## ' + (item.title || '[Post]') + '\n' + text.trim();
-          navigator.clipboard.writeText(clipText).catch(function () {});
+          navigator.clipboard.writeText(text.trim()).catch(function () {});
         }
 
         _archiveReviewItem(itemType, artifactId, itemEl);
@@ -484,9 +483,7 @@ window.initDigestViewer = function (data) {
         if (notes.length > 0) {
           var lines = [];
           notes.forEach(function (n) {
-            lines.push('## ' + (n.title || '[Post]'));
             lines.push((n.note_text || '').trim());
-            lines.push('');
           });
           navigator.clipboard.writeText(lines.join('\n')).catch(function () {});
         }
@@ -503,9 +500,7 @@ window.initDigestViewer = function (data) {
         if (todos.length > 0) {
           var lines = [];
           todos.forEach(function (t) {
-            lines.push('## ' + (t.title || '[Post]'));
             lines.push((t.todo_text || '').trim());
-            lines.push('');
           });
           navigator.clipboard.writeText(lines.join('\n')).catch(function () {});
         }
