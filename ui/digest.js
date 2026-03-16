@@ -462,6 +462,16 @@ window.initDigestViewer = function (data) {
         var itemType = btn.dataset.type;
         var artifactId = parseInt(btn.dataset.id);
         var itemEl = btn.closest('.review-item');
+
+        // Copy note/todo text to clipboard before archiving
+        var dataArr = itemType === 'note' ? notes : todos;
+        var item = dataArr.find(function (x) { return x.artifact_id === artifactId; });
+        if (item) {
+          var text = itemType === 'note' ? (item.note_text || '') : (item.todo_text || '');
+          var clipText = '## ' + (item.title || '[Post]') + '\n' + text.trim();
+          navigator.clipboard.writeText(clipText).catch(function () {});
+        }
+
         _archiveReviewItem(itemType, artifactId, itemEl);
       });
     });
@@ -470,18 +480,38 @@ window.initDigestViewer = function (data) {
     var archAllNotes = document.getElementById('btn-archive-all-notes');
     if (archAllNotes) {
       archAllNotes.addEventListener('click', async function () {
+        // Copy all notes to clipboard before archiving
+        if (notes.length > 0) {
+          var lines = [];
+          notes.forEach(function (n) {
+            lines.push('## ' + (n.title || '[Post]'));
+            lines.push((n.note_text || '').trim());
+            lines.push('');
+          });
+          navigator.clipboard.writeText(lines.join('\n')).catch(function () {});
+        }
         await fetch('/api/notes/archive-all', { method: 'POST' });
         pushUndo({ type: 'notes_archive_all' });
-        showToastFromViewer('All notes archived');
+        showToastFromViewer('All notes archived & copied to clipboard');
         renderReviewCard();
       });
     }
     var archAllTodos = document.getElementById('btn-archive-all-todos');
     if (archAllTodos) {
       archAllTodos.addEventListener('click', async function () {
+        // Copy all todos to clipboard before archiving
+        if (todos.length > 0) {
+          var lines = [];
+          todos.forEach(function (t) {
+            lines.push('## ' + (t.title || '[Post]'));
+            lines.push((t.todo_text || '').trim());
+            lines.push('');
+          });
+          navigator.clipboard.writeText(lines.join('\n')).catch(function () {});
+        }
         await fetch('/api/todos/archive-all', { method: 'POST' });
         pushUndo({ type: 'todos_archive_all' });
-        showToastFromViewer('All todos archived');
+        showToastFromViewer('All todos archived & copied to clipboard');
         renderReviewCard();
       });
     }
