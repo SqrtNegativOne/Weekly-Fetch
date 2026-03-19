@@ -148,7 +148,7 @@ def schedule_window_days(schedule: dict) -> float:
     return 7.0   # safe default
 
 
-# ── Age-scaled threshold (Option A) ──────────────────────────────────────────
+# ── Age-scaled threshold ─────────────────────────────────────────────────────
 # Engagement on social platforms follows an exponential saturation curve:
 #   S(t) = A · (1 − e^(−λt))
 # where λ = ln(2) / half_life.  Empirically, Reddit posts accumulate ~50% of

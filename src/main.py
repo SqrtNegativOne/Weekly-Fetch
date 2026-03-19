@@ -34,7 +34,7 @@ from notify import notify_new_artifacts
 from schedule import (current_day_tag, is_due, load_state, mark_fetched,
                       passes_threshold, save_state, schedule_window_days)
 
-_ERRORS_PATH = BASE_DIR / "fetch_errors.json"
+_ERRORS_PATH   = BASE_DIR / "fetch_errors.json"
 _PROGRESS_PATH = BASE_DIR / "fetch_progress.json"
 
 MAX_WORKERS = 4
@@ -93,7 +93,6 @@ def main(force: bool = False):
 
     if not due:
         logger.info("Nothing due to fetch today.")
-        lock_path.unlink(missing_ok=True)
         return
 
     errors: list[str] = []
@@ -130,10 +129,10 @@ def main(force: bool = False):
                 continue
 
             # Compute the cutoff datetime from the last fetch.
-            # Option B: extend the look-back by one full fetch window so posts
-            # that narrowly missed the threshold last time are re-evaluated
-            # with their now-higher score.  INSERT OR IGNORE deduplicates
-            # anything already stored.
+            # Extend the look-back by one full fetch window so posts that
+            # narrowly missed the threshold last time are re-evaluated with
+            # their now-higher score.  INSERT OR IGNORE deduplicates anything
+            # already stored.
             window_days = schedule_window_days(source.schedule)
             if force:
                 since = None
@@ -176,8 +175,8 @@ def main(force: bool = False):
                     idx, source, fetcher, window_days = futures[future]
                     try:
                         posts = future.result()
-                        # Option A: age-scaled threshold filter (skipped for
-                        # platforms that don't expose meaningful scores).
+                        # Age-scaled threshold filter (skipped for platforms
+                        # that don't expose meaningful scores).
                         if fetcher.supports_threshold:
                             posts = [
                                 p for p in posts
