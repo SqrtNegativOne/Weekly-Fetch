@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from config import HEADERS, MIN_KARMA, POST_LIMIT
+from config import HEADERS, POST_LIMIT
 from fetch.base import BaseFetcher, register
 from log import logger
 
@@ -123,7 +123,6 @@ class RedditFetcher(BaseFetcher):
     def fetch_posts(self, source, progress, since: datetime | None,
                     *, accounts_config: dict) -> list[dict]:
         subreddit = source.name
-        min_karma = source.threshold
         time_filter = self._time_filter_from_since(since)
 
         if progress is not None:
@@ -146,16 +145,12 @@ class RedditFetcher(BaseFetcher):
 
         for child in data["data"]["children"]:
             post = child["data"]
-            if post.get("score", 0) < min_karma:
-                continue
 
-            # Skip posts older than the last fetch
-            if since is not None:
-                created_utc = post.get("created_utc", 0)
-                if created_utc:
-                    created_dt = datetime.fromtimestamp(created_utc, tz=timezone.utc)
-                    if created_dt < since:
-                        continue
+            # Skip posts older than the last fetch (since is extended by B in main.py)
+            created_utc = post.get("created_utc", 0)
+            created_at  = datetime.fromtimestamp(created_utc, tz=timezone.utc) if created_utc else None
+            if since is not None and created_at is not None and created_at < since:
+                continue
 
             # title is HTML-escaped so it's safe to inject into innerHTML via JS
             title = html.escape(post.get("title", ""))
@@ -216,6 +211,7 @@ class RedditFetcher(BaseFetcher):
                 "score":        score,
                 "content_type": content_type,
                 "content":      content,
+                "created_at":   created_at,
             })
 
             if len(post_data) >= POST_LIMIT:
@@ -259,6 +255,7 @@ class RedditFetcher(BaseFetcher):
                 content=pd["content"],
                 author="",
                 comments=comment_map.get(pd["post_id"], []),
+                created_at=pd["created_at"],
             ))
 
         return posts

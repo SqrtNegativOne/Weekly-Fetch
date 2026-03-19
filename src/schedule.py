@@ -125,6 +125,28 @@ def reddit_time_filter(schedule: dict) -> str:
     return "week"   # safe default
 
 
+# ── Window size helper ────────────────────────────────────────────────────────
+
+def schedule_window_days(schedule: dict) -> float:
+    """Return the fetch cadence as a number of days.
+
+    Used to compute the age-scaled threshold: a post is compared against the
+    fraction of final engagement it should have earned at its current age
+    relative to this window.
+    """
+    if "every_n_days" in schedule:
+        return float(schedule["every_n_days"])
+    if "every_weekday" in schedule:
+        return 7.0
+    if "every_n_weeks" in schedule:
+        return float(schedule["every_n_weeks"]) * 7
+    if "every_n_months" in schedule:
+        return float(schedule["every_n_months"]) * 30
+    if "day_n_of_month" in schedule:
+        return 30.0
+    return 7.0   # safe default
+
+
 # ── Human-readable label ──────────────────────────────────────────────────────
 
 def schedule_label(schedule: dict) -> str:

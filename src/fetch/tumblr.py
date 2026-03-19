@@ -17,6 +17,7 @@ class TumblrFetcher(BaseFetcher):
     """
 
     platform = "tumblr"
+    supports_threshold = False  # RSS has no note-count field
 
     def fetch_posts(self, source, progress, since: datetime | None,
                     *, accounts_config: dict) -> list[dict]:
@@ -39,10 +40,11 @@ class TumblrFetcher(BaseFetcher):
 
         for entry in feed.entries:
             # ── Date filter ──────────────────────────────────────────────────
-            published = entry.get("published_parsed")
+            published  = entry.get("published_parsed")
+            created_at = None
             if published:
-                pub_dt = datetime(*published[:6], tzinfo=timezone.utc)
-                if pub_dt < cutoff:
+                created_at = datetime(*published[:6], tzinfo=timezone.utc)
+                if created_at < cutoff:
                     continue  # stop here — RSS is chronological, no older posts follow
 
             # ── Title ────────────────────────────────────────────────────────
@@ -76,6 +78,7 @@ class TumblrFetcher(BaseFetcher):
                 content_type=content_type,
                 content=content,
                 author=blog,
+                created_at=created_at,
             ))
 
             if len(posts) >= POST_LIMIT:

@@ -23,7 +23,6 @@ class InstagramFetcher(BaseFetcher):
     def fetch_posts(self, source, progress, since: datetime | None,
                     *, accounts_config: dict) -> list[dict]:
         username = source.name
-        min_likes = source.threshold
 
         try:
             import instaloader
@@ -50,9 +49,6 @@ class InstagramFetcher(BaseFetcher):
                         post_dt = post_dt.replace(tzinfo=timezone.utc)
                     if post_dt < cutoff:
                         break
-
-                    if post.likes < min_likes:
-                        continue
 
                     # ── Title (caption) ───────────────────────────────────────────
                     caption   = post.caption or ""
@@ -81,6 +77,7 @@ class InstagramFetcher(BaseFetcher):
                         content_type=content_type,
                         content=content,
                         author="@" + username,
+                        created_at=post_dt,
                     ))
 
                     if progress is not None:
