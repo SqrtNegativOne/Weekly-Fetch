@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -123,6 +124,76 @@ def reddit_time_filter(schedule: dict) -> str:
         return "month"
 
     return "week"   # safe default
+
+
+# ── Window size helper ────────────────────────────────────────────────────────
+
+def schedule_window_days(schedule: dict) -> float:
+    """Return the fetch cadence as a number of days.
+
+    Used to compute the age-scaled threshold: a post is compared against the
+    fraction of final engagement it should have earned at its current age
+    relative to this window.
+    """
+    if "every_n_days" in schedule:
+        return float(schedule["every_n_days"])
+    if "every_weekday" in schedule:
+        return 7.0
+    if "every_n_weeks" in schedule:
+        return float(schedule["every_n_weeks"]) * 7
+    if "every_n_months" in schedule:
+        return float(schedule["every_n_months"]) * 30
+    if "day_n_of_month" in schedule:
+        return 30.0
+    return 7.0   # safe default
+
+
+# ── Age-scaled threshold ─────────────────────────────────────────────────────
+# Engagement on social platforms follows an exponential saturation curve:
+#   S(t) = A · (1 − e^(−λt))
+# where λ = ln(2) / half_life.  Empirically, Reddit posts accumulate ~50% of
+# their final score within the first 6 hours (R²=0.98 exponential fit).
+# We scale the user's threshold by the fraction of final score a post of age
+# `t` is expected to have earned, so posts published late in the fetch window
+# are judged fairly against posts that had more time to accumulate engagement.
+
+ENGAGEMENT_HALF_LIFE_HOURS = 6.0
+MIN_POST_AGE_HOURS         = 4.0   # posts younger than this have too little evidence
+
+
+def passes_threshold(post: dict, threshold: int,
+                     now: datetime, window_days: float) -> bool:
+    """Return True if this post meets the age-scaled threshold.
+
+    For platforms without score data (supports_threshold=False) main.py skips
+    this call entirely, so we only see posts with meaningful scores here.
+    """
+    from datetime import timezone  # avoid circular; datetime already imported above
+
+    if threshold <= 0:
+        return True
+
+    score      = post.get("score", 0)
+    created_at = post.get("created_at")
+
+    if created_at is None:
+        # No timestamp available — fall back to raw score comparison.
+        return score >= threshold
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+
+    age_hours = (now - created_at).total_seconds() / 3600
+
+    if age_hours < MIN_POST_AGE_HOURS:
+        return False    # too new — insufficient evidence; B will catch it next run
+
+    lam          = math.log(2) / ENGAGEMENT_HALF_LIFE_HOURS
+    window_hours = window_days * 24
+    saturation   = (1 - math.exp(-lam * age_hours)) / (1 - math.exp(-lam * window_hours))
+    saturation   = min(saturation, 1.0)  # cap for posts older than the window
+
+    return score >= threshold * saturation
 
 
 # ── Human-readable label ──────────────────────────────────────────────────────

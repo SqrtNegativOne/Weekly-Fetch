@@ -26,7 +26,6 @@ class MastodonFetcher(BaseFetcher):
     def fetch_posts(self, source, progress, since: datetime | None,
                     *, accounts_config: dict) -> list[dict]:
         handle = source.name
-        min_favorites = source.threshold
 
         # ── 1. Parse handle ───────────────────────────────────────────────────
         if "@" not in handle:
@@ -76,15 +75,12 @@ class MastodonFetcher(BaseFetcher):
         posts: list[dict] = []
 
         for status in statuses:
-            # ── Favourites filter ──────────────────────────────────────────────
-            if status.get("favourites_count", 0) < min_favorites:
-                continue
-
             # ── Date filter ────────────────────────────────────────────────────
             created_str = status.get("created_at", "")
+            created_at: datetime | None = None
             try:
-                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
-                if created_dt < cutoff:
+                created_at = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                if created_at < cutoff:
                     continue
             except ValueError:
                 pass  # keep the post if we can't parse the date
@@ -117,6 +113,7 @@ class MastodonFetcher(BaseFetcher):
                 content_type=content_type,
                 content=content,
                 author=handle,
+                created_at=created_at,
             ))
 
             if len(posts) >= POST_LIMIT:

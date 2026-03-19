@@ -10,7 +10,7 @@ import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Ensure src/ is on sys.path so bare `import config` etc. work regardless
@@ -31,11 +31,11 @@ import fetch.twitter
 from fetch.base import FETCHERS
 from log import logger
 from notify import notify_new_artifacts
-from schedule import current_day_tag, is_due, load_state, mark_fetched, save_state
+from schedule import (current_day_tag, is_due, load_state, mark_fetched,
+                      passes_threshold, save_state, schedule_window_days)
 
-_ERRORS_PATH = BASE_DIR / "fetch_errors.json"
+_ERRORS_PATH   = BASE_DIR / "fetch_errors.json"
 _PROGRESS_PATH = BASE_DIR / "fetch_progress.json"
-
 
 MAX_WORKERS = 4
 
@@ -93,7 +93,6 @@ def main(force: bool = False):
 
     if not due:
         logger.info("Nothing due to fetch today.")
-        lock_path.unlink(missing_ok=True)
         return
 
     errors: list[str] = []
@@ -130,6 +129,11 @@ def main(force: bool = False):
                 continue
 
             # Compute the cutoff datetime from the last fetch.
+            # Extend the look-back by one full fetch window so posts that
+            # narrowly missed the threshold last time are re-evaluated with
+            # their now-higher score.  INSERT OR IGNORE deduplicates anything
+            # already stored.
+            window_days = schedule_window_days(source.schedule)
             if force:
                 since = None
             else:
@@ -138,36 +142,47 @@ def main(force: bool = False):
                     since = datetime.fromisoformat(last_str)
                     if since.tzinfo is None:
                         since = since.replace(tzinfo=timezone.utc)
+                    since -= timedelta(days=window_days)   # B: extend look-back
                 else:
                     since = None
 
             sources_status.append({"label": label,
                 "platform": source.platform, "status": "pending"})
-            jobs.append((len(sources_status) - 1, source, fetcher, since))
+            jobs.append((len(sources_status) - 1, source, fetcher, since, window_days))
 
         done_count = sum(1 for s in sources_status if s["status"] == "error")
         _write_progress(total_sources, done_count, sources_status)
 
         # ── Fan-out: submit all jobs to the thread pool ──────────────────
+        now_utc = datetime.now(timezone.utc)
+
         with tqdm(total=max(total_steps, 1), unit="req",
                   bar_format=bar_format, dynamic_ncols=True) as progress:
 
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
                 futures = {}
-                for idx, source, fetcher, since in jobs:
+                for idx, source, fetcher, since, window_days in jobs:
                     sources_status[idx]["status"] = "fetching"
                     future = pool.submit(
                         fetcher.fetch_posts, source, progress, since,
                         accounts_config=accounts)
-                    futures[future] = (idx, source, fetcher)
+                    futures[future] = (idx, source, fetcher, window_days)
 
                 _write_progress(total_sources, done_count, sources_status)
 
                 # ── Fan-in: collect results as they arrive ───────────────
                 for future in as_completed(futures):
-                    idx, source, fetcher = futures[future]
+                    idx, source, fetcher, window_days = futures[future]
                     try:
                         posts = future.result()
+                        # Age-scaled threshold filter (skipped for platforms
+                        # that don't expose meaningful scores).
+                        if fetcher.supports_threshold:
+                            posts = [
+                                p for p in posts
+                                if passes_threshold(
+                                    p, source.threshold, now_utc, window_days)
+                            ]
                         results[source.name] = posts
                         mark_fetched(source, state, now)
                         sources_status[idx]["status"] = "done"

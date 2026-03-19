@@ -69,10 +69,15 @@ class BaseFetcher:
     - `source.threshold` replaces all the old min_karma/min_likes/... kwargs.
     - `accounts_config` is the full accounts.json dict — most fetchers ignore
       it; TwitterFetcher reads `rss_base` from it.
+    - Threshold filtering is NOT done inside fetchers. main.py applies an
+      age-scaled threshold after fetching so that recently-published posts
+      are judged fairly. Fetchers that cannot provide a meaningful score
+      (Tumblr, Twitter) set supports_threshold = False to skip filtering.
     """
 
     platform: str = ""          # e.g. "bluesky" — subclass MUST set this
     progress_steps: int = 1     # ticks per source; RedditFetcher overrides to POST_LIMIT+1
+    supports_threshold: bool = True  # False for RSS-only platforms with no score data
 
     # ── Helpers subclasses can call ───────────────────────────────────────────
 
@@ -88,17 +93,19 @@ class BaseFetcher:
 
     def make_post(self, *, title: str, link: str, score: int,
                   content_type: str, content: dict,
-                  author: str, comments: list | None = None) -> dict:
+                  author: str, comments: list | None = None,
+                  created_at: datetime | None = None) -> dict:
         """Build the standard post dict that db.py / the UI expect."""
         return {
-            "title":    title,
-            "link":     link,
-            "score":    score,
-            "type":     content_type,
-            "content":  content,
-            "comments": comments or [],
-            "platform": self.platform,
-            "author":   author,
+            "title":      title,
+            "link":       link,
+            "score":      score,
+            "type":       content_type,
+            "content":    content,
+            "comments":   comments or [],
+            "platform":   self.platform,
+            "author":     author,
+            "created_at": created_at,   # datetime | None; used for age-scaled threshold
         }
 
     # ── Interface subclasses MUST implement ───────────────────────────────────

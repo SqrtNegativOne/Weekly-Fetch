@@ -42,14 +42,20 @@ def init_db(db_path: Path) -> None:
             CREATE TABLE IF NOT EXISTS notes (
                 artifact_id INTEGER PRIMARY KEY REFERENCES artifacts(id),
                 note_text   TEXT NOT NULL,
-                updated_at  TEXT NOT NULL
+                updated_at  TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                archived_at TEXT
             );
+            CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status);
 
             CREATE TABLE IF NOT EXISTS todos (
                 artifact_id INTEGER PRIMARY KEY REFERENCES artifacts(id),
                 todo_text   TEXT NOT NULL,
-                updated_at  TEXT NOT NULL
+                updated_at  TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                archived_at TEXT
             );
+            CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
 
             CREATE TABLE IF NOT EXISTS usage_sessions (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,22 +65,6 @@ def init_db(db_path: Path) -> None:
                 artifacts_viewed INTEGER NOT NULL DEFAULT 0,
                 time_per_source  TEXT
             );
-        """)
-
-        # Migration: add status + archived_at columns to notes and todos
-        for table in ("notes", "todos"):
-            for col, definition in (
-                ("status",      "TEXT NOT NULL DEFAULT 'pending'"),
-                ("archived_at", "TEXT"),
-            ):
-                try:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
-                except sqlite3.OperationalError:
-                    pass  # column already exists
-
-        conn.executescript("""
-            CREATE INDEX IF NOT EXISTS idx_notes_status ON notes(status);
-            CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
         """)
 
 

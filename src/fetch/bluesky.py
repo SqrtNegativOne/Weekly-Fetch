@@ -19,7 +19,6 @@ class BlueskyFetcher(BaseFetcher):
     def fetch_posts(self, source, progress, since: datetime | None,
                     *, accounts_config: dict) -> list[dict]:
         handle = source.name
-        min_likes = source.threshold
 
         if progress is not None:
             progress.set_description(f"@{handle}: Bluesky")
@@ -41,15 +40,12 @@ class BlueskyFetcher(BaseFetcher):
             post_view = item.get("post", {})
             record    = post_view.get("record", {})
 
-            # ── Like filter ──────────────────────────────────────────────────
-            if post_view.get("likeCount", 0) < min_likes:
-                continue
-
             # ── Date filter ──────────────────────────────────────────────────
             created_str = record.get("createdAt", "")
+            created_at: datetime | None = None
             try:
-                created_dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
-                if created_dt < cutoff:
+                created_at = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                if created_at < cutoff:
                     continue
             except ValueError:
                 pass  # keep the post if we can't parse the date
@@ -97,6 +93,7 @@ class BlueskyFetcher(BaseFetcher):
                 content_type=content_type,
                 content=content,
                 author=handle,
+                created_at=created_at,
             ))
 
             if len(posts) >= POST_LIMIT:
