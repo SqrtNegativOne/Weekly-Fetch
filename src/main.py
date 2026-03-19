@@ -7,7 +7,6 @@ This script is what Windows Task Scheduler fires on a schedule.
 It fetches posts, saves to SQLite as pending artifacts, and shows a toast notification.
 """
 import json
-import math
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -32,56 +31,13 @@ import fetch.twitter
 from fetch.base import FETCHERS
 from log import logger
 from notify import notify_new_artifacts
-from schedule import current_day_tag, is_due, load_state, mark_fetched, save_state, schedule_window_days
+from schedule import (current_day_tag, is_due, load_state, mark_fetched,
+                      passes_threshold, save_state, schedule_window_days)
 
 _ERRORS_PATH = BASE_DIR / "fetch_errors.json"
 _PROGRESS_PATH = BASE_DIR / "fetch_progress.json"
 
 MAX_WORKERS = 4
-
-# ── Age-scaled threshold (Option A) ──────────────────────────────────────────
-# Engagement on social platforms follows an exponential saturation curve:
-#   S(t) = A · (1 − e^(−λt))
-# where λ = ln(2) / half_life.  Empirically, Reddit posts accumulate ~50% of
-# their final score within the first 6 hours (R²=0.98 exponential fit).
-# We scale the user's threshold by the fraction of final score a post of age
-# `t` is expected to have earned, so posts published late in the fetch window
-# are judged fairly against posts that had more time to accumulate engagement.
-_ENGAGEMENT_HALF_LIFE_HOURS = 6.0
-_MIN_POST_AGE_HOURS = 4.0   # posts younger than this have too little evidence
-
-
-def _passes_threshold(post: dict, threshold: int,
-                      now: datetime, window_days: float) -> bool:
-    """Return True if this post meets the age-scaled threshold.
-
-    For platforms without score data (supports_threshold=False) main.py skips
-    this call entirely, so we only see posts with meaningful scores here.
-    """
-    if threshold <= 0:
-        return True
-
-    score      = post.get("score", 0)
-    created_at = post.get("created_at")
-
-    if created_at is None:
-        # No timestamp available — fall back to raw score comparison.
-        return score >= threshold
-
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=timezone.utc)
-
-    age_hours = (now - created_at).total_seconds() / 3600
-
-    if age_hours < _MIN_POST_AGE_HOURS:
-        return False    # too new — insufficient evidence; B will catch it next run
-
-    lam          = math.log(2) / _ENGAGEMENT_HALF_LIFE_HOURS
-    window_hours = window_days * 24
-    saturation   = (1 - math.exp(-lam * age_hours)) / (1 - math.exp(-lam * window_hours))
-    saturation   = min(saturation, 1.0)  # cap for posts older than the window
-
-    return score >= threshold * saturation
 
 
 def _write_progress(total: int, done: int,
@@ -225,7 +181,7 @@ def main(force: bool = False):
                         if fetcher.supports_threshold:
                             posts = [
                                 p for p in posts
-                                if _passes_threshold(
+                                if passes_threshold(
                                     p, source.threshold, now_utc, window_days)
                             ]
                         results[source.name] = posts
