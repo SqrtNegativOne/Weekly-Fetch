@@ -318,3 +318,32 @@
   color: var(--text-3);
   text-align: center;
 }
+
+.usage-section-sub {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+  font-weight: normal;
+  margin-left: 6px;
+}
+
+/* Dormant sources */
+.usage-dormant-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+.usage-dormant-row:last-child { border-bottom: none; }
+.usage-dormant-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.usage-dormant-name {
+  flex: 1;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+}
+.usage-dormant-meta {
+  color: var(--text-3);
+}

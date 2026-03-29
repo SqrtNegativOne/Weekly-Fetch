@@ -100,6 +100,8 @@ window.initDigestViewer = function (data) {
   var _timePerSource = {};
   var _viewedIds = new Set();
   var _sessionPosted = false;
+  var _notesWritten = 0;
+  var _todosWritten = 0;
 
   function _flushCardTime() {
     var p = POSTS[current];
@@ -692,8 +694,29 @@ window.initDigestViewer = function (data) {
     cardScrollEl.scrollTop = 0;
   }
 
+  // ── Session summary (shown in empty state) ────────
+  function showSessionSummary() {
+    var el = document.getElementById('home-session-summary');
+    if (!el) return;
+    var durationSec = Math.round((Date.now() - _sessionStartTime) / 1000);
+    if (durationSec < 5) return;
+    var mins = Math.floor(durationSec / 60);
+    var secs = durationSec % 60;
+    var timeStr = mins > 0 ? mins + 'm ' + secs + 's' : secs + 's';
+    var parts = [];
+    if (_viewedIds.size > 0) parts.push(_viewedIds.size + ' read');
+    if (_notesWritten > 0) parts.push(_notesWritten + ' note' + (_notesWritten > 1 ? 's' : ''));
+    if (_todosWritten > 0) parts.push(_todosWritten + ' todo' + (_todosWritten > 1 ? 's' : ''));
+    parts.push(timeStr);
+    el.innerHTML = parts.map(function (s) {
+      return '<div class="session-stat">' + s + '</div>';
+    }).join('');
+    el.style.display = 'flex';
+  }
+
   // ── Show empty state ──────────────────────────────
   function showEmpty() {
+    showSessionSummary();
     document.getElementById('viewer-app').style.display = 'none';
     document.getElementById('home-empty').style.display = 'flex';
   }
@@ -973,6 +996,7 @@ window.initDigestViewer = function (data) {
     var p = POSTS[current];
     if (!p || p.type === 'cover' || p.type === 'review') return;
     var prevText = p.note || '';
+    if (!prevText.trim() && notesTextarea.value.trim()) _notesWritten++;
     p.note = notesTextarea.value;
     pushTextUndo('note_edit', p.id, prevText);
     clearTimeout(_notesSaveTimer);
@@ -989,6 +1013,7 @@ window.initDigestViewer = function (data) {
     var p = POSTS[current];
     if (!p || p.type === 'cover' || p.type === 'review') return;
     var prevText = p.todo || '';
+    if (!prevText.trim() && todosTextarea.value.trim()) _todosWritten++;
     p.todo = todosTextarea.value;
     pushTextUndo('todo_edit', p.id, prevText);
     clearTimeout(_todosSaveTimer);

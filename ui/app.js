@@ -418,7 +418,7 @@ async function loadUsage() {
         '<div class="usage-bar-track">' +
           '<div class="usage-bar-fill" style="width:' + pct + '%;background:var(--accent)"></div>' +
         '</div>' +
-        '<div class="usage-bar-value">' + s.note_count + 'n / ' + s.todo_count + 't</div>' +
+        '<div class="usage-bar-value">' + s.note_count + 'n / ' + s.todo_count + 't' + (s.posts_fetched ? '  (of ' + s.posts_fetched + ')' : '') + '</div>' +
       '</div>';
     }).join('');
   }
@@ -437,6 +437,28 @@ async function loadUsage() {
         '<span class="usage-session-count">' + s.artifacts_viewed + ' viewed</span>' +
       '</div>';
     }).join('');
+  }
+
+  // Dormant sources
+  var dormantEl = document.getElementById('usage-dormant');
+  try {
+    var stale = await api('GET', '/api/stats/stale-sources');
+    if (!stale || stale.length === 0) {
+      dormantEl.innerHTML = '<div class="usage-empty">All sources fetched recently.</div>';
+    } else {
+      dormantEl.innerHTML = stale.map(function (s) {
+        var d = new Date(s.last_fetch);
+        var dateStr = d.toLocaleDateString();
+        var platformColor = 'var(--' + (s.platform || 'accent') + ', var(--accent))';
+        return '<div class="usage-dormant-row">' +
+          '<span class="usage-dormant-dot" style="background:' + platformColor + '"></span>' +
+          '<span class="usage-dormant-name">' + escHtml(s.platform + '/' + s.source_name) + '</span>' +
+          '<span class="usage-dormant-meta">last fetched ' + dateStr + ' &middot; ' + s.total_artifacts + ' total</span>' +
+        '</div>';
+      }).join('');
+    }
+  } catch (e) {
+    dormantEl.innerHTML = '';
   }
 }
 

@@ -7,7 +7,7 @@ Tables:
 """
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -317,8 +317,18 @@ def get_usage_stats(db_path: Path) -> dict:
         for r in todo_rows:
             source_todos[r[0]] = r[1]
 
+        # Total artifacts fetched per source (for ROI ratio)
+        source_fetched: dict[str, int] = {}
+        fetched_rows = conn.execute("""
+            SELECT platform || '/' || source_name AS src, COUNT(*) AS cnt
+            FROM artifacts
+            GROUP BY src
+        """).fetchall()
+        for r in fetched_rows:
+            source_fetched[r[0]] = r[1]
+
         # Merge into per_source list
-        all_sources = set(source_time) | set(source_notes) | set(source_todos)
+        all_sources = set(source_time) | set(source_notes) | set(source_todos) | set(source_fetched)
         per_source = []
         for src in sorted(all_sources):
             parts = src.split("/", 1)
@@ -329,6 +339,7 @@ def get_usage_stats(db_path: Path) -> dict:
                 "time_seconds": source_time.get(src, 0),
                 "note_count": source_notes.get(src, 0),
                 "todo_count": source_todos.get(src, 0),
+                "posts_fetched": source_fetched.get(src, 0),
             })
 
         # Sort by time descending so the busiest sources appear first
@@ -558,6 +569,28 @@ def get_archived_todos(db_path: Path, search: str | None = None,
         """, params).fetchall()
 
     return [_todo_row_to_dict(r) for r in rows]
+
+
+def get_stale_sources(db_path: Path, weeks: int = 4) -> list[dict]:
+    """Return sources whose most recent artifact is older than `weeks` weeks.
+
+    Useful for surfacing sources the user has been ignoring, so they can
+    consciously decide whether to keep or drop them.
+    """
+    if not db_path.exists():
+        return []
+    cutoff = (datetime.now() - timedelta(weeks=weeks)).isoformat()
+    with _connect(db_path) as conn:
+        rows = conn.execute("""
+            SELECT platform, source_name,
+                   MAX(fetched_at) AS last_fetch,
+                   COUNT(*) AS total_artifacts
+            FROM artifacts
+            GROUP BY platform, source_name
+            HAVING last_fetch < ?
+            ORDER BY last_fetch ASC
+        """, (cutoff,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def _note_row_to_dict(r) -> dict:

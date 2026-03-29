@@ -44,7 +44,7 @@ if str(_SRC) not in sys.path:
 
 from config import ACCOUNTS_PATH, BASE_DIR, BUNDLE_DIR, load_settings, save_settings
 from db import (archive_artifact, get_archived, get_artifact, get_pending,
-                get_usage_stats, init_db, save_note, save_todo,
+                get_usage_stats, get_stale_sources, init_db, save_note, save_todo,
                 save_usage_session, unarchive_artifact,
                 archive_note, unarchive_note, archive_todo, unarchive_todo,
                 archive_all_notes, archive_all_todos,
@@ -404,5 +404,10 @@ def create_app() -> FastAPI:
         db = _db_path()
         init_db(db)
         return get_usage_stats(db)
+
+    @app.get("/api/stats/stale-sources")
+    def stale_sources():
+        db = _db_path()
+        return get_stale_sources(db)
 
     return app
