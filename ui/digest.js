@@ -180,6 +180,30 @@ window.initDigestViewer = function (data) {
     }, 1000);
   }
 
+  // ── Session timer widget ───────────────────────────
+  var _timerPostEl  = document.getElementById('timer-post');
+  var _timerTotalEl = document.getElementById('timer-total');
+
+  function _fmtTime(ms) {
+    var s = Math.floor(ms / 1000);
+    var m = Math.floor(s / 60);
+    return m + ':' + ((s % 60) < 10 ? '0' : '') + (s % 60);
+  }
+
+  var _timerInterval = setInterval(function () {
+    if (_timerTotalEl)
+      _timerTotalEl.textContent = _fmtTime(Date.now() - _sessionStartTime);
+    if (_timerPostEl) {
+      var p = POSTS[current];
+      if (p && p.type !== 'cover' && p.type !== 'review')
+        _timerPostEl.textContent = _fmtTime(Date.now() - _cardViewStart);
+      else
+        _timerPostEl.textContent = '\u2014';
+    }
+  }, 1000);
+
+  window.addEventListener('beforeunload', function () { clearInterval(_timerInterval); });
+
   // ── Source colour palettes ──────────────────────────
   const PALETTES = [
     ['#6366f1', '#8b5cf6', '#a78bfa'],

@@ -441,6 +441,33 @@
 }
 #todos::placeholder { color: var(--text-4); }
 
+/* ── Session timer widget ─────────────────────────── */
+#session-timer {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  pointer-events: none;
+  user-select: none; -webkit-user-select: none;
+  opacity: 0.6;
+  transition: opacity var(--dur);
+}
+#session-timer:hover { opacity: 1; pointer-events: auto; }
+.timer-row { display: flex; align-items: center; gap: 3px; }
+.timer-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-4);
+}
+.timer-sep { color: var(--text-4); }
+
 /* ═══════════════════════════════════════════════════
    Cover card (overview before reading)
    ═══════════════════════════════════════════════════ */
