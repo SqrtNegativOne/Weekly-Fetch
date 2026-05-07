@@ -345,33 +345,45 @@ window.initDigestViewer = function (data) {
     var artifacts = POSTS.filter(function (p) {
       return p.type !== 'cover' && p.type !== 'review';
     });
-    var count     = artifacts.length;
+    var count = artifacts.length;
 
-    var words = artifacts.reduce(function (acc, p) {
-      var w = p.title ? p.title.split(/\s+/).length : 0;
-      if (p.content && p.content.text) w += p.content.text.split(/\s+/).length;
-      return acc + w;
-    }, 0);
-    var readMins = Math.max(1, Math.ceil(words / 200));
-
-    // Count artifacts per source
-    var sourceCounts = {}, sourcePlatforms = {};
+    // Group by platform then source, preserving insertion order
+    var platformGroups = {}, platformOrder = [];
     artifacts.forEach(function (p) {
-      if (!sourceCounts[p.source_name]) {
-        sourceCounts[p.source_name]   = 0;
-        sourcePlatforms[p.source_name] = p.platform || 'reddit';
-      }
-      sourceCounts[p.source_name]++;
+      var plat = p.platform || 'reddit';
+      if (!platformGroups[plat]) { platformGroups[plat] = {}; platformOrder.push(plat); }
+      var src = p.source_name || 'unknown';
+      platformGroups[plat][src] = (platformGroups[plat][src] || 0) + 1;
     });
 
-    var sourcesHtml = Object.keys(sourceCounts).map(function (name) {
-      var platform = sourcePlatforms[name];
-      return '<div class="cover-source-row">' +
-        '<span class="platform-badge pb-' + platform + '">' + escAttr(platform) + '</span>' +
-        '<span class="cover-source-name">' + platformPrefix(platform) + escAttr(name) + '</span>' +
-        '<span class="cover-source-count">' + sourceCounts[name] + '</span>' +
-      '</div>';
-    }).join('');
+    var platLabels = {
+      reddit: 'Reddit', bluesky: 'Bluesky', tumblr: 'Tumblr',
+      instagram: 'Instagram', mastodon: 'Mastodon', twitter: 'Twitter',
+    };
+
+    var treeHtml = '';
+    platformOrder.forEach(function (plat) {
+      var sources = platformGroups[plat];
+      var platTotal = Object.keys(sources).reduce(function (a, k) { return a + sources[k]; }, 0);
+      var label = platLabels[plat] || plat;
+      treeHtml +=
+        '<div class="dist-platform-row">' +
+          '<span class="dist-arrow">\u21b3</span>' +
+          '<span class="dist-plat-count">' + platTotal + '</span>' +
+          '<span class="dist-plat-name">' + escAttr(label) + ' ' +
+            (platTotal === 1 ? 'post' : 'posts') + '</span>' +
+        '</div>';
+      Object.keys(sources).forEach(function (src) {
+        var cnt = sources[src];
+        var prefix = platformPrefix(plat);
+        treeHtml +=
+          '<div class="dist-source-row">' +
+            '<span class="dist-arrow">\u21b3</span>' +
+            '<span class="dist-src-count">' + cnt + '</span>' +
+            '<span class="dist-src-name">from ' + escAttr(prefix + src) + '</span>' +
+          '</div>';
+      });
+    });
 
     var reviewLine = '';
     if (_pendingNotes + _pendingTodos > 0) {
@@ -383,14 +395,9 @@ window.initDigestViewer = function (data) {
 
     document.getElementById('card').innerHTML =
       '<div class="cover-card">' +
-        '<div class="cover-count">' + count +
-          ' artifact' + (count !== 1 ? 's' : '') + ' pending.' +
-        '</div>' +
-        '<div class="cover-readtime">Estimated reading time: ~' + readMins +
-          ' minute' + (readMins !== 1 ? 's' : '') + '.</div>' +
+        '<div class="dist-total">' + count + ' total artifact' + (count !== 1 ? 's' : '') + '</div>' +
+        '<div class="dist-tree">' + treeHtml + '</div>' +
         reviewLine +
-        '<div class="cover-sources-label">Sources</div>' +
-        '<div class="cover-sources">' + sourcesHtml + '</div>' +
         '<div class="cover-hint">Press <kbd>\u2192</kbd> or <kbd>l</kbd> to start reading</div>' +
       '</div>';
   }
