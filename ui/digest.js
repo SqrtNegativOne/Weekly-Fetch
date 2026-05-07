@@ -347,6 +347,13 @@ window.initDigestViewer = function (data) {
     });
     var count = artifacts.length;
 
+    var words = artifacts.reduce(function (acc, p) {
+      var w = p.title ? p.title.split(/\s+/).length : 0;
+      if (p.content && p.content.text) w += p.content.text.split(/\s+/).length;
+      return acc + w;
+    }, 0);
+    var readMins = Math.max(1, Math.ceil(words / 200));
+
     // Group by platform then source, preserving insertion order
     var platformGroups = {}, platformOrder = [];
     artifacts.forEach(function (p) {
@@ -396,6 +403,8 @@ window.initDigestViewer = function (data) {
     document.getElementById('card').innerHTML =
       '<div class="cover-card">' +
         '<div class="dist-total">' + count + ' total artifact' + (count !== 1 ? 's' : '') + '</div>' +
+        '<div class="cover-readtime">Estimated reading time: ~' + readMins +
+          ' minute' + (readMins !== 1 ? 's' : '') + '.</div>' +
         '<div class="dist-tree">' + treeHtml + '</div>' +
         reviewLine +
         '<div class="cover-hint">Press <kbd>\u2192</kbd> or <kbd>l</kbd> to start reading</div>' +

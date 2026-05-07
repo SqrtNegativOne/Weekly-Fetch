@@ -476,6 +476,12 @@
   padding: 8px 0;
 }
 
+.cover-readtime {
+  font-size: var(--text-lg);
+  color: var(--text-2);
+  margin-bottom: 32px;
+}
+
 /* Distribution tree */
 .dist-total {
   font-size: 2rem;
